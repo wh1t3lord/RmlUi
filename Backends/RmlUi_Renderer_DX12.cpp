@@ -55,6 +55,7 @@
 
 	#if defined _MSC_VER
 		#pragma warning(push, 0)
+		#pragma warning(push, 4189)
 	#elif defined __clang__
 		#pragma clang diagnostic push
 		#pragma clang diagnostic ignored "-Wall"
@@ -2417,6 +2418,8 @@ void RenderInterface_DX12::ValidateTextureAllocationNotAsPlaced(const Gfx::Frame
 	D3D12MA::Allocation* p_allocation_source = static_cast<D3D12MA::Allocation*>(p_texture_source->Get_Resource());
 
 	RMLUI_ASSERT(p_allocation_source->GetResource() && "allocation must contain a valid pointer to resource! something is broken");
+	#else
+	(void)source;
 	#endif
 }
 
@@ -4280,7 +4283,7 @@ void RenderInterface_DX12::Initialize(void) noexcept
 		this->m_manager_buffer.Initialize(this->m_p_device, this->m_p_allocator, this->m_p_offset_allocator_for_descriptor_heap_shaders,
 			&this->m_handle_shaders, this->m_size_descriptor_heap_shaders);
 		this->m_manager_texture.Initialize(this->m_p_allocator, this->m_p_offset_allocator_for_descriptor_heap_shaders, this->m_p_device,
-			this->m_p_copy_command_list, this->m_p_copy_allocator, this->m_p_descriptor_heap_shaders,
+			this->m_p_copy_command_list, this->m_p_command_graphics_list, this->m_p_copy_allocator, this->m_p_descriptor_heap_shaders,
 			this->m_p_descriptor_heap_render_target_view_for_texture_manager, this->m_p_descriptor_heap_depth_stencil_view_for_texture_manager,
 			this->m_p_copy_queue, &this->m_handle_shaders, this);
 		this->m_manager_render_layer.Initialize(this);
@@ -4362,7 +4365,7 @@ void RenderInterface_DX12::Initialize(void) noexcept
 		this->m_manager_buffer.Initialize(this->m_p_device, this->m_p_allocator, this->m_p_offset_allocator_for_descriptor_heap_shaders,
 			&this->m_handle_shaders, this->m_size_descriptor_heap_shaders);
 		this->m_manager_texture.Initialize(this->m_p_allocator, this->m_p_offset_allocator_for_descriptor_heap_shaders, this->m_p_device,
-			this->m_p_copy_command_list, this->m_p_copy_allocator, this->m_p_descriptor_heap_shaders,
+			this->m_p_copy_command_list, this->m_p_command_graphics_list, this->m_p_copy_allocator, this->m_p_descriptor_heap_shaders,
 			this->m_p_descriptor_heap_render_target_view_for_texture_manager, this->m_p_descriptor_heap_depth_stencil_view_for_texture_manager,
 			this->m_p_copy_queue, &this->m_handle_shaders, this);
 		this->m_manager_render_layer.Initialize(this);
@@ -9811,9 +9814,10 @@ void RenderInterface_DX12::BufferMemoryManager::TryToFreeAvailableBlock()
 
 RenderInterface_DX12::TextureMemoryManager::TextureMemoryManager() :
 	m_size_for_placed_heap{}, m_size_limit_for_being_placed{}, m_size_srv_cbv_uav_descriptor{}, m_size_rtv_descriptor{}, m_size_dsv_descriptor{},
-	m_fence_value{}, m_p_allocator{}, m_p_offset_allocator_for_descriptor_heap_srv_cbv_uav{}, m_p_device{}, m_p_command_list{},
-	m_p_command_allocator{}, m_p_descriptor_heap_srv{}, m_p_copy_queue{}, m_p_fence{}, m_p_fence_event{}, m_p_handle{}, m_p_renderer{},
-	m_p_virtual_block_for_render_target_heap_allocations{}, m_p_virtual_block_for_depth_stencil_heap_allocations{}, m_p_descriptor_heap_rtv{}
+	m_fence_value{}, m_p_allocator{}, m_p_offset_allocator_for_descriptor_heap_srv_cbv_uav{}, m_p_device{}, m_p_copy_command_list{},
+	m_p_backend_command_list{}, m_p_command_allocator{}, m_p_descriptor_heap_srv{}, m_p_copy_queue{}, m_p_fence{}, m_p_fence_event{}, m_p_handle{},
+	m_p_renderer{}, m_p_virtual_block_for_render_target_heap_allocations{}, m_p_virtual_block_for_depth_stencil_heap_allocations{},
+	m_p_descriptor_heap_rtv{}
 {
 	RMLUI_ZoneScopedN("DirectX 12 - TextureMemoryManager::Constructor");
 }
@@ -9830,17 +9834,18 @@ bool RenderInterface_DX12::TextureMemoryManager::Is_Initialized(void) const
 }
 
 void RenderInterface_DX12::TextureMemoryManager::Initialize(D3D12MA::Allocator* p_allocator,
-	OffsetAllocator::Allocator* p_offset_allocator_for_descriptor_heap_srv_cbv_uav, ID3D12Device* p_device, ID3D12GraphicsCommandList* p_command_list,
-	ID3D12CommandAllocator* p_allocator_command, ID3D12DescriptorHeap* p_descriptor_heap_srv, ID3D12DescriptorHeap* p_descriptor_heap_rtv,
-	ID3D12DescriptorHeap* p_descriptor_heap_dsv, ID3D12CommandQueue* p_copy_queue, D3D12_CPU_DESCRIPTOR_HANDLE* p_handle,
-	RenderInterface_DX12* p_renderer, size_t size_for_placed_heap)
+	OffsetAllocator::Allocator* p_offset_allocator_for_descriptor_heap_srv_cbv_uav, ID3D12Device* p_device,
+	ID3D12GraphicsCommandList* p_copy_command_list, ID3D12GraphicsCommandList* p_backend_command_list, ID3D12CommandAllocator* p_allocator_command,
+	ID3D12DescriptorHeap* p_descriptor_heap_srv, ID3D12DescriptorHeap* p_descriptor_heap_rtv, ID3D12DescriptorHeap* p_descriptor_heap_dsv,
+	ID3D12CommandQueue* p_copy_queue, D3D12_CPU_DESCRIPTOR_HANDLE* p_handle, RenderInterface_DX12* p_renderer, size_t size_for_placed_heap)
 {
 	RMLUI_ZoneScopedN("DirectX 12 - TextureMemoryManager::Initialize");
 	RMLUI_ASSERT(p_allocator && "you must pass a valid allocator pointer");
 	RMLUI_ASSERT(size_for_placed_heap > 0 && "there's no point in creating in such small heap");
 	RMLUI_ASSERT(size_for_placed_heap != size_t(-1) && "invalid value!");
 	RMLUI_ASSERT(p_device && "must be valid!");
-	RMLUI_ASSERT(p_command_list && "must be valid!");
+	RMLUI_ASSERT(p_copy_command_list && "must be valid!");
+	RMLUI_ASSERT(p_backend_command_list && "must be valid!");
 	RMLUI_ASSERT(p_allocator_command && "must be valid!");
 	RMLUI_ASSERT(p_descriptor_heap_srv && "must be valid!");
 	RMLUI_ASSERT(p_copy_queue && "must be valid!");
@@ -9852,7 +9857,8 @@ void RenderInterface_DX12::TextureMemoryManager::Initialize(D3D12MA::Allocator* 
 
 	this->m_p_device = p_device;
 	this->m_p_allocator = p_allocator;
-	this->m_p_command_list = p_command_list;
+	this->m_p_copy_command_list = p_copy_command_list;
+	this->m_p_backend_command_list = p_backend_command_list;
 	this->m_p_command_allocator = p_allocator_command;
 	this->m_size_for_placed_heap = size_for_placed_heap;
 	this->m_p_descriptor_heap_srv = p_descriptor_heap_srv;
@@ -10003,7 +10009,8 @@ void RenderInterface_DX12::TextureMemoryManager::Shutdown()
 
 	this->m_p_allocator = nullptr;
 	this->m_p_device = nullptr;
-	this->m_p_command_list = nullptr;
+	this->m_p_copy_command_list = nullptr;
+	this->m_p_backend_command_list = nullptr;
 	this->m_p_command_allocator = nullptr;
 	this->m_p_descriptor_heap_srv = nullptr;
 	this->m_p_copy_queue = nullptr;
@@ -10150,6 +10157,23 @@ ID3D12Resource* RenderInterface_DX12::TextureMemoryManager::Alloc_Texture(D3D12_
 		p_impl);
 
 	p_result = static_cast<D3D12MA::Allocation*>(p_impl->Get_Texture()->Get_Resource())->GetResource();
+
+	// dx12 sdk was updated and if we don't do that operation we get a validation error see
+	// https://asawicki.info/news_1724_initializing_dx12_textures_after_allocation_and_aliasing direct quote: "If the metadata of such compression are
+	// uninitialized, it might have consequences more severe than observing random colors. It's actually an undefined behavior."
+	if (p_result)
+	{
+		bool is_render_target = flags & D3D12_RESOURCE_FLAGS::D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+		RMLUI_ASSERT(m_p_backend_command_list && "must be initialized");
+		RMLUI_ASSERT(p_impl && "must be valid");
+
+		if (is_render_target)
+		{
+			constexpr FLOAT clear_color[] = {0.0f, 0.0f, 0.0f, 0.0f};
+			this->m_p_backend_command_list->ClearRenderTargetView(p_impl->Get_DescriptorResourceView(), clear_color, 0, nullptr);
+		}
+	}
 
 	return p_result;
 }
@@ -10336,7 +10360,7 @@ void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(size_t base_
 	RMLUI_ASSERT(this->m_p_device && "must be valid!");
 	RMLUI_ASSERT(p_impl && "must be valid!");
 	RMLUI_ASSERT(this->m_p_command_allocator && "must be valid!");
-	RMLUI_ASSERT(this->m_p_command_list && "must be valid!");
+	RMLUI_ASSERT(this->m_p_copy_command_list && "must be valid!");
 	RMLUI_ASSERT(this->m_p_allocator && "allocator must be valid!");
 
 	if (this->m_p_allocator)
@@ -10362,9 +10386,9 @@ void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(size_t base_
 			RMLUI_DX_ASSERTMSG(status_reset, "failed to Reset (command allocator)");
 		}
 
-		if (this->m_p_command_list)
+		if (this->m_p_copy_command_list)
 		{
-			auto status_reset = this->m_p_command_list->Reset(this->m_p_command_allocator, nullptr);
+			auto status_reset = this->m_p_copy_command_list->Reset(this->m_p_command_allocator, nullptr);
 			RMLUI_DX_ASSERTMSG(status_reset, "failed to Reset (command list)");
 		}
 
@@ -10383,7 +10407,7 @@ void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(size_t base_
 	RMLUI_ASSERT(this->m_p_device && "must be valid!");
 	RMLUI_ASSERT(p_impl && "must be valid!");
 	RMLUI_ASSERT(this->m_p_command_allocator && "must be valid!");
-	RMLUI_ASSERT(this->m_p_command_list && "must be valid!");
+	RMLUI_ASSERT(this->m_p_copy_command_list && "must be valid!");
 	RMLUI_ASSERT(this->m_p_allocator && "allocator must be valid!");
 	RMLUI_ASSERT(p_texture && "must be valid!");
 
@@ -10476,7 +10500,7 @@ void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Placed(size_t base_mem
 	RMLUI_ASSERT(this->m_p_device && "must be valid!");
 	RMLUI_ASSERT(p_impl && "must be valid!");
 	RMLUI_ASSERT(this->m_p_command_allocator && "must be valid!");
-	RMLUI_ASSERT(this->m_p_command_list && "must be valid!");
+	RMLUI_ASSERT(this->m_p_copy_command_list && "must be valid!");
 
 	D3D12_RESOURCE_ALLOCATION_INFO info_for_alloc{};
 
@@ -10628,12 +10652,12 @@ void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Placed(size_t base_mem
 		RMLUI_DX_ASSERTMSG(status_reset, "failed to Reset (command allocator)");
 	}
 
-	if (this->m_p_command_list)
+	if (this->m_p_copy_command_list)
 	{
-		auto status_reset = this->m_p_command_list->Reset(this->m_p_command_allocator, nullptr);
+		auto status_reset = this->m_p_copy_command_list->Reset(this->m_p_command_allocator, nullptr);
 		RMLUI_DX_ASSERTMSG(status_reset, "failed to Reset (command list)");
 
-		this->m_p_command_list->ResourceBarrier(1, &bar);
+		this->m_p_copy_command_list->ResourceBarrier(1, &bar);
 	}
 
 	this->Upload(false, p_impl, desc, p_data, p_resource);
@@ -10648,7 +10672,7 @@ void RenderInterface_DX12::TextureMemoryManager::Upload(bool is_committed, Textu
 	RMLUI_ASSERT(p_resource && "must be valid!");
 	RMLUI_ASSERT(this->m_p_descriptor_heap_srv && "must be valid!");
 	RMLUI_ASSERT(this->m_p_allocator && "must be valid!");
-	RMLUI_ASSERT(this->m_p_command_list && "must be valid!");
+	RMLUI_ASSERT(this->m_p_copy_command_list && "must be valid!");
 	RMLUI_ASSERT(this->m_p_handle && "must be valid!");
 	RMLUI_ASSERT(this->m_p_copy_queue && "must be valid!");
 	RMLUI_ASSERT(this->m_p_renderer && "must be valid!");
@@ -10677,7 +10701,7 @@ void RenderInterface_DX12::TextureMemoryManager::Upload(bool is_committed, Textu
 		{
 			Rml::Log::Message(Rml::Log::Type::LT_WARNING,
 				"! [DirectX 12]: you are trying to upload huge texture = %zu bytes (%d Mb), so if you can't optimize its size for loading then "
-			    "ignore "
+				"ignore "
 				"this "
 				"message, otherwise we "
 				"expect you to upload using staging buffer from UploadResourceManager instance",
@@ -10744,7 +10768,7 @@ void RenderInterface_DX12::TextureMemoryManager::Upload(bool is_committed, Textu
 	desc_data.RowPitch = desc.Width * this->BytesPerPixel(desc.Format);
 	desc_data.SlicePitch = desc_data.RowPitch * desc.Height;
 
-	auto allocated_size = UpdateSubresources<1>(this->m_p_command_list, p_resource, p_allocation->GetResource(), 0, 0, 1, &desc_data);
+	auto allocated_size = UpdateSubresources<1>(this->m_p_copy_command_list, p_resource, p_allocation->GetResource(), 0, 0, 1, &desc_data);
 
 #ifdef RMLUI_DX_DEBUG
 	constexpr const char* p_committed = "committed";
@@ -10777,11 +10801,11 @@ void RenderInterface_DX12::TextureMemoryManager::Upload(bool is_committed, Textu
 	this->m_p_device->CreateShaderResourceView(p_resource, &desc_srv, cast_offset_pointer);
 	p_texture_handle->Set_Allocation_DescriptorHeap(descriptor_allocation);
 
-	status = this->m_p_command_list->Close();
+	status = this->m_p_copy_command_list->Close();
 
 	RMLUI_DX_ASSERTMSG(status, "failed to Close (command list for copy)");
 
-	ID3D12CommandList* p_lists[] = {this->m_p_command_list};
+	ID3D12CommandList* p_lists[] = {this->m_p_copy_command_list};
 
 	this->m_p_copy_queue->ExecuteCommandLists(1, p_lists);
 

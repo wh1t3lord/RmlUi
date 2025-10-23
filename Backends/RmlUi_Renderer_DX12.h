@@ -414,10 +414,19 @@ public:
 		/// @brief
 		/// @param p_allocator from main manager
 		/// @param size_for_placed_heap by default it is 4Mb in bytes
-		void Initialize(D3D12MA::Allocator* p_allocator, OffsetAllocator::Allocator* p_offset_allocator_for_descriptor_heap_srv_cbv_uav,
-			ID3D12Device* p_device, ID3D12GraphicsCommandList* p_copy_command_list, ID3D12CommandAllocator* p_copy_allocator_command,
-			ID3D12DescriptorHeap* p_descriptor_heap_srv, ID3D12DescriptorHeap* p_descriptor_heap_rtv, ID3D12DescriptorHeap* p_descriptor_heap_dsv,
-			ID3D12CommandQueue* p_copy_queue, D3D12_CPU_DESCRIPTOR_HANDLE* p_handle, RenderInterface_DX12* p_renderer,
+		void Initialize(
+			D3D12MA::Allocator* p_allocator,
+			OffsetAllocator::Allocator* p_offset_allocator_for_descriptor_heap_srv_cbv_uav,
+			ID3D12Device* p_device,
+			ID3D12GraphicsCommandList* p_copy_command_list,
+			ID3D12GraphicsCommandList* p_backend_command_list,
+			ID3D12CommandAllocator* p_copy_allocator_command,
+			ID3D12DescriptorHeap* p_descriptor_heap_srv, 
+			ID3D12DescriptorHeap* p_descriptor_heap_rtv,
+			ID3D12DescriptorHeap* p_descriptor_heap_dsv,
+			ID3D12CommandQueue* p_copy_queue,
+			D3D12_CPU_DESCRIPTOR_HANDLE* p_handle, 
+			RenderInterface_DX12* p_renderer,
 			size_t size_for_placed_heap = RMLUI_RENDER_BACKEND_FIELD_VIDEOMEMORY_FOR_TEXTURE_ALLOCATION);
 		void Shutdown();
 
@@ -489,7 +498,9 @@ public:
 		D3D12MA::Allocator* m_p_allocator;
 		OffsetAllocator::Allocator* m_p_offset_allocator_for_descriptor_heap_srv_cbv_uav;
 		ID3D12Device* m_p_device;
-		ID3D12GraphicsCommandList* m_p_command_list;
+		ID3D12GraphicsCommandList* m_p_copy_command_list;
+		/// @brief command list from drawing
+		ID3D12GraphicsCommandList* m_p_backend_command_list;
 		ID3D12CommandAllocator* m_p_command_allocator;
 		ID3D12DescriptorHeap* m_p_descriptor_heap_srv;
 		ID3D12CommandQueue* m_p_copy_queue;
