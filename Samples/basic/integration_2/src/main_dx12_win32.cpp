@@ -107,6 +107,7 @@ private:
 	void InitializeSwapChain();
 	void InitializeRTV();
 	void InitializeDepthBuffer();
+	void InitializePostprocessTexture(int nWidth, int nHeight);
 	void InitializeRootSignature();
 	void InitializePipelineState();
 	void InitializeBoxGeometry();
@@ -142,6 +143,7 @@ private:
 	ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
 	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 	ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
+	ComPtr<ID3D12DescriptorHeap> m_srvHeap;
 	ComPtr<ID3D12Resource> m_depthStencil;
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState> m_pipelineState;
@@ -150,6 +152,19 @@ private:
 	ComPtr<ID3D12Resource> m_constantBuffer[FrameCount];
 	ComPtr<ID3D12Fence> m_fence;
 	ComPtr<IDXGIAdapter1> m_adapter;
+
+	struct postprocess_t {
+		ID3D12Resource* p_res_rt = nullptr;
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv = {0};
+		D3D12_CPU_DESCRIPTOR_HANDLE srv = {0};
+
+		ID3D12Resource* p_res_ds = nullptr;
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv_ds = {0};
+		D3D12_CPU_DESCRIPTOR_HANDLE srv_ds = {0};
+	};
+
+	postprocess_t m_postprocess_texture;
+
 	HANDLE m_fenceEvent;
 	UINT64 m_fenceValue[FrameCount] = {};
 
@@ -160,6 +175,7 @@ private:
 
 	UINT m_rtvDescriptorSize = 0;
 	UINT m_dsvDescriptorSize = 0;
+	UINT m_srvDescriptorSize = 0;
 	UINT m_frameIndex = 0;
 };
 
@@ -185,6 +201,7 @@ void D3D12Renderer::Initialize()
 	InitializeSwapChain();
 	InitializeRTV();
 	InitializeDepthBuffer();
+	InitializePostprocessTexture(m_width, m_height);
 	InitializeRootSignature();
 	InitializePipelineState();
 	InitializeBoxGeometry();
@@ -236,6 +253,41 @@ void D3D12Renderer::InitializeDevice()
 			break;
 		}
 	}
+
+#if 0
+	ID3D12Debug* p_debug{};
+
+	HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(&p_debug));
+	assert(SUCCEEDED(hr));
+
+	if (p_debug)
+	{
+		p_debug->EnableDebugLayer();
+
+	#ifdef RMLUI_DX_DEBUG
+		Rml::Log::Message(Rml::Log::Type::LT_DEBUG, "[DirectX-12] Debug Layer = ENABLED!");
+	#endif
+
+		ID3D12Debug1* p_sdk_layers{};
+
+		auto status = p_debug->QueryInterface(IID_PPV_ARGS(&p_sdk_layers));
+
+		assert(SUCCEEDED(status));
+
+		if (SUCCEEDED(status))
+		{
+			p_sdk_layers->SetEnableGPUBasedValidation(TRUE);
+			p_sdk_layers->SetEnableSynchronizedCommandQueueValidation(TRUE);
+			p_sdk_layers->Release();
+
+	#ifdef RMLUI_DX_DEBUG
+			Rml::Log::Message(Rml::Log::Type::LT_DEBUG, "[DirectX-12] GPU validation =  ENABLED!");
+	#endif
+		}
+
+		p_debug->Release();
+	}
+#endif
 }
 
 void D3D12Renderer::InitializeCommandObjects()
@@ -277,7 +329,7 @@ void D3D12Renderer::InitializeSwapChain()
 void D3D12Renderer::InitializeRTV()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-	rtvHeapDesc.NumDescriptors = FrameCount;
+	rtvHeapDesc.NumDescriptors = FrameCount + 1; // framecount for swapchain's rt and plus one for postprocess
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap));
 	m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -291,10 +343,153 @@ void D3D12Renderer::InitializeRTV()
 	}
 }
 
+void D3D12Renderer::InitializePostprocessTexture(int nWidth, int nHeight)
+{
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	srvHeapDesc.NumDescriptors = 2;
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_srvHeap));
+
+	m_srvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	D3D12_RESOURCE_DESC texDesc = {};
+	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	texDesc.Alignment = 0;
+	texDesc.Width = nWidth;
+	texDesc.Height = nHeight;
+	texDesc.DepthOrArraySize = 1;
+	texDesc.MipLevels = 1;
+	texDesc.Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM;
+	texDesc.SampleDesc.Count = 1;
+	texDesc.SampleDesc.Quality = 0;
+	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+	// Set clear value
+	D3D12_CLEAR_VALUE clearValue = {};
+	clearValue.Format = texDesc.Format;
+	float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+	memcpy(clearValue.Color, clearColor, sizeof(float) * 4);
+
+	// Create heap properties
+	D3D12_HEAP_PROPERTIES heapProps = {};
+	heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+	heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	heapProps.CreationNodeMask = 1;
+	heapProps.VisibleNodeMask = 1;
+
+	// Create committed resource
+	HRESULT hr = m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_RENDER_TARGET, &clearValue,
+		IID_PPV_ARGS(&m_postprocess_texture.p_res_rt));
+
+	if (FAILED(hr))
+		throw std::runtime_error("Failed to create post-process texture resource");
+
+	// Create RTV
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+	rtvDesc.Format = texDesc.Format;
+	rtvDesc.Texture2D.MipSlice = 0;
+	rtvDesc.Texture2D.PlaneSlice = 0;
+
+	m_postprocess_texture.rtv.ptr = (m_rtvHeap->GetCPUDescriptorHandleForHeapStart().ptr + (m_rtvDescriptorSize * FrameCount));
+	m_device->CreateRenderTargetView(m_postprocess_texture.p_res_rt, &rtvDesc, m_postprocess_texture.rtv);
+
+	// Create SRV
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = texDesc.Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = 1;
+	srvDesc.Texture2D.PlaneSlice = 0;
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+	m_postprocess_texture.srv = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+	m_device->CreateShaderResourceView(m_postprocess_texture.p_res_rt, &srvDesc, m_postprocess_texture.srv);
+
+	D3D12_RESOURCE_DESC depthDesc = {};
+	depthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	depthDesc.Alignment = 0;
+	depthDesc.Width = nWidth;
+	depthDesc.Height = nHeight;
+	depthDesc.DepthOrArraySize = 1;
+	depthDesc.MipLevels = 1;
+	depthDesc.Format = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+	depthDesc.SampleDesc.Count = 1;
+	depthDesc.SampleDesc.Quality = 0;
+	depthDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	depthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	// Set clear value for depth stencil
+	D3D12_CLEAR_VALUE depthClearValue = {};
+	depthClearValue.Format = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+	depthClearValue.DepthStencil.Depth = 1.0f;
+	depthClearValue.DepthStencil.Stencil = 0;
+
+	// Heap properties for default heap
+	D3D12_HEAP_PROPERTIES heapProps2 = {};
+	heapProps2.Type = D3D12_HEAP_TYPE_DEFAULT;
+	heapProps2.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	heapProps2.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	heapProps2.CreationNodeMask = 1;
+	heapProps2.VisibleNodeMask = 1;
+
+	// Create the depth stencil resource
+	hr = m_device->CreateCommittedResource(&heapProps2, D3D12_HEAP_FLAG_NONE, &depthDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClearValue,
+		IID_PPV_ARGS(&m_postprocess_texture.p_res_ds));
+
+	if (FAILED(hr))
+		throw std::runtime_error("Failed to create depth stencil resource");
+
+	// Create DSV for depth
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+	dsvDesc.Texture2D.MipSlice = 0;
+
+	m_postprocess_texture.rtv_ds.ptr = (m_dsvHeap->GetCPUDescriptorHandleForHeapStart().ptr + m_dsvDescriptorSize);
+	m_device->CreateDepthStencilView(m_postprocess_texture.p_res_ds, &dsvDesc, m_postprocess_texture.rtv_ds);
+
+	// Create SRV for depth (optional - for reading depth in shaders)
+	if (m_postprocess_texture.rtv_ds.ptr != 0)
+	{
+		// Determine the SRV format based on the depth format
+		DXGI_FORMAT depthSRVFormat = DXGI_FORMAT_UNKNOWN;
+		switch (DXGI_FORMAT_D32_FLOAT_S8X24_UINT)
+		{
+		case DXGI_FORMAT_D32_FLOAT: depthSRVFormat = DXGI_FORMAT_R32_FLOAT; break;
+		case DXGI_FORMAT_D24_UNORM_S8_UINT: depthSRVFormat = DXGI_FORMAT_R24_UNORM_X8_TYPELESS; break;
+		case DXGI_FORMAT_D16_UNORM: depthSRVFormat = DXGI_FORMAT_R16_UNORM; break;
+		case DXGI_FORMAT_D32_FLOAT_S8X24_UINT: depthSRVFormat = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS; break;
+		default:
+			// If format not recognized, don't create SRV
+			break;
+		}
+
+		if (depthSRVFormat != DXGI_FORMAT_UNKNOWN)
+		{
+			D3D12_SHADER_RESOURCE_VIEW_DESC depthSrvDesc = {};
+			depthSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			depthSrvDesc.Format = depthSRVFormat;
+			depthSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			depthSrvDesc.Texture2D.MostDetailedMip = 0;
+			depthSrvDesc.Texture2D.MipLevels = 1;
+			depthSrvDesc.Texture2D.PlaneSlice = 0;
+			depthSrvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+			m_postprocess_texture.srv_ds.ptr = m_srvHeap->GetCPUDescriptorHandleForHeapStart().ptr + m_srvDescriptorSize;
+			m_device->CreateShaderResourceView(m_postprocess_texture.p_res_ds, &depthSrvDesc, m_postprocess_texture.srv_ds);
+		}
+	}
+}
+
 void D3D12Renderer::InitializeDepthBuffer()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
-	dsvHeapDesc.NumDescriptors = 1;
+	dsvHeapDesc.NumDescriptors = 2; // one for swapchain another for postprocess
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvHeap));
 
@@ -322,6 +517,7 @@ void D3D12Renderer::InitializeDepthBuffer()
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
 	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	m_dsvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 	m_device->CreateDepthStencilView(m_depthStencil.Get(), &dsvDesc, m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
@@ -567,6 +763,11 @@ void D3D12Renderer::Update(float deltaTime, Rml::Context* p_context)
 
 		InitializeRTV();
 		InitializeDepthBuffer();
+		InitializePostprocessTexture(m_width, m_height);
+
+		assert(m_postprocess_texture.p_res_ds);
+		assert(m_postprocess_texture.p_res_rt);
+
 		m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 		m_resizePending = false;
 
@@ -653,19 +854,23 @@ void D3D12Renderer::Render(Rml::Context* p_context)
 	Backend::RmlRenderInput rtv_arg;
 	Backend::RmlRenderInput dsv_arg;
 
-/* 
-	Note: That's supposed for a situation where you would like to use your own swapchain render targets and render them directly using frame buffer index
+	/*
+	    Note: That's supposed for a situation where you would like to use your own swapchain render targets and render them directly using frame
+	   buffer index
 
 
-	rtv_arg.p_input_present_resource = m_renderTargets[m_frameIndex].Get();
-	rtv_arg.p_input_present_resource_binding = &rtvHandle;
+	    rtv_arg.p_input_present_resource = m_renderTargets[m_frameIndex].Get();
+	    rtv_arg.p_input_present_resource_binding = &rtvHandle;
 
-	dsv_arg.p_input_present_resource = m_depthStencil.Get();
-	dsv_arg.p_input_present_resource_binding = &dsvHandle;
-*/
+	    dsv_arg.p_input_present_resource = m_depthStencil.Get();
+	    dsv_arg.p_input_present_resource_binding = &dsvHandle;
+	*/
 
-	
+	rtv_arg.p_input_present_resource = m_postprocess_texture.p_res_rt;
+	rtv_arg.p_input_present_resource_binding = &m_postprocess_texture.rtv;
 
+	dsv_arg.p_input_present_resource = m_postprocess_texture.p_res_ds;
+	dsv_arg.p_input_present_resource_binding = &m_postprocess_texture.rtv_ds;
 
 	// Draw RmlUi in your engine
 	// but keep in mind that we don't make barrier thing for your passed input arguments since it supposed that you have their state as render target
@@ -738,7 +943,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	}
 	case WM_SIZE:
 	{
-		D3D12Renderer* renderer = reinterpret_cast<D3D12Renderer*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 		if (renderer)
 		{
 			UINT width = LOWORD(lParam);
