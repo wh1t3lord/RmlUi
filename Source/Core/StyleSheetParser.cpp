@@ -388,8 +388,7 @@ bool StyleSheetParser::ParseDecoratorBlock(const String& at_name, NamedDecorator
 	const PropertySpecification& property_specification = decorator_instancer->GetPropertySpecification();
 
 	PropertySpecificationParser parser(properties, property_specification);
-	if (!ReadProperties(parser))
-		return false;
+	ReadProperties(parser);
 
 	// Set non-defined properties to their defaults
 	property_specification.SetPropertyDefaults(properties);
@@ -526,6 +525,8 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 	int rule_count = 0;
 	line_number = begin_line_number;
 	stream = _stream;
+	parse_buffer.clear();
+	parse_buffer_pos = 0;
 	stream_file_name = StringUtilities::Replace(stream->GetSourceURL().GetURL(), '|', ':');
 
 	enum class State { Global, AtRuleIdentifier, KeyframeBlock, Invalid };
@@ -544,7 +545,7 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 	{
 		String pre_token_str;
 
-		while (char token = FindToken(pre_token_str, "{@}", true))
+		while (char token = FindAnyToken(pre_token_str, "{@}"))
 		{
 			switch (state)
 			{
@@ -563,8 +564,7 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 					// Read the attributes
 					PropertyDictionary properties;
 					PropertySpecificationParser parser(properties, StyleSheetSpecification::GetPropertySpecification());
-					if (!ReadProperties(parser))
-						continue;
+					ReadProperties(parser);
 
 					StringList rule_name_list;
 					StringUtilities::ExpandString(rule_name_list, pre_token_str, ',', '(', ')');
@@ -717,8 +717,7 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 					// Each keyframe in keyframes has its own block which is processed here
 					PropertyDictionary properties;
 					PropertySpecificationParser parser(properties, StyleSheetSpecification::GetPropertySpecification());
-					if (!ReadProperties(parser))
-						continue;
+					ReadProperties(parser);
 
 					if (!ParseKeyframeBlock(current_block.stylesheet->keyframes, at_rule_name, pre_token_str, properties))
 						continue;
@@ -761,15 +760,14 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 	return !style_sheets.empty();
 }
 
-bool StyleSheetParser::ParseProperties(PropertyDictionary& parsed_properties, const String& properties)
+void StyleSheetParser::ParseProperties(PropertyDictionary& parsed_properties, const String& properties)
 {
 	RMLUI_ASSERT(!stream);
 	StreamMemory stream_owner((const byte*)properties.c_str(), properties.size());
 	stream = &stream_owner;
 	PropertySpecificationParser parser(parsed_properties, StyleSheetSpecification::GetPropertySpecification());
-	bool success = ReadProperties(parser);
+	ReadProperties(parser);
 	stream = nullptr;
-	return success;
 }
 
 StyleSheetNodeListRaw StyleSheetParser::ConstructNodes(StyleSheetNode& root_node, const String& selectors)
@@ -794,7 +792,7 @@ StyleSheetNodeListRaw StyleSheetParser::ConstructNodes(StyleSheetNode& root_node
 	return leaf_nodes;
 }
 
-bool StyleSheetParser::ReadProperties(AbstractPropertyParser& property_parser)
+void StyleSheetParser::ReadProperties(AbstractPropertyParser& property_parser)
 {
 	RMLUI_ZoneScoped;
 
@@ -830,7 +828,7 @@ bool StyleSheetParser::ReadProperties(AbstractPropertyParser& property_parser)
 				if (!name.empty())
 					Log::Message(Log::LT_WARNING, "End of rule encountered while parsing property declaration '%s' at %s:%d", name.c_str(),
 						stream_file_name.c_str(), line_number);
-				return true;
+				return;
 			}
 			else if (character == ':')
 			{
@@ -896,8 +894,6 @@ bool StyleSheetParser::ReadProperties(AbstractPropertyParser& property_parser)
 		Log::Message(Log::LT_WARNING, "Invalid property declaration '%s':'%s' at %s:%d", name.c_str(), value.c_str(), stream_file_name.c_str(),
 			line_number);
 	}
-
-	return true;
 }
 
 StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const String& rule, const PropertyDictionary& properties,
@@ -1042,7 +1038,7 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 	return leaf_node;
 }
 
-char StyleSheetParser::FindToken(String& buffer, const char* tokens, bool remove_token)
+char StyleSheetParser::FindAnyToken(String& buffer, const char* tokens)
 {
 	buffer.clear();
 	char character;
@@ -1050,8 +1046,7 @@ char StyleSheetParser::FindToken(String& buffer, const char* tokens, bool remove
 	{
 		if (strchr(tokens, character) != nullptr)
 		{
-			if (remove_token)
-				parse_buffer_pos++;
+			parse_buffer_pos++;
 			return character;
 		}
 		else
@@ -1068,8 +1063,7 @@ bool StyleSheetParser::ReadCharacter(char& buffer)
 {
 	bool comment = false;
 
-	// Continuously fill the buffer until either we run out of
-	// stream or we find the requested token
+	// Continuously fill the buffer until either we run out of stream or we find the requested token.
 	do
 	{
 		while (parse_buffer_pos < parse_buffer.size())
@@ -1138,15 +1132,24 @@ bool StyleSheetParser::ReadCharacter(char& buffer)
 
 bool StyleSheetParser::FillBuffer()
 {
-	// If theres no data to process, abort
 	if (stream->IsEOS())
 		return false;
+
+	const bool first_read = parse_buffer.empty();
 
 	// Read in some data (4092 instead of 4096 to avoid the buffer growing when we have to add back
 	// a character after a failed comment parse.)
 	parse_buffer.clear();
 	bool read = stream->Read(parse_buffer, 4092) > 0;
 	parse_buffer_pos = 0;
+
+	if (first_read && parse_buffer.substr(0, 3) == "\xEF\xBB\xBF")
+	{
+		Log::Message(Log::LT_WARNING,
+			"UTF-8 BOM encountered in stylesheet %s. This is not supported and can lead to subtle issues, "
+			"please remove the BOM from the file's text encoding.",
+			stream_file_name.c_str());
+	}
 
 	return read;
 }
