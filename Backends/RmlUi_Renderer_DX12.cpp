@@ -4301,8 +4301,6 @@ void RenderInterface_DX12::Initialize(void) noexcept
 	}
 	else
 	{
-		// integration route initialization
-
 		unsigned char max_msaa_supported_sample_count = this->GetMSAASupportedSampleCount(64);
 
 		this->m_is_use_msaa = this->m_msaa_sample_count <= max_msaa_supported_sample_count;

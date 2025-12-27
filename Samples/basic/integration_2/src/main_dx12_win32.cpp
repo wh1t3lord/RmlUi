@@ -71,8 +71,57 @@ float4 PSMain(PSInput input) : SV_TARGET {
 })";
 
 constexpr const char pShaderSourceText_Offscreen[] = R"(
-	
+float4 VSMain(uint vid : SV_VertexID) : SV_Position
+{
+    float2 uv = float2((vid << 1) & 2, vid & 2);
+    float4 pos = float4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
+
+    return pos;
+}
 )";
+
+constexpr const char pShaderSourceText_OffscreenPixel[] = R"(
+Texture2D<float4> gTexture : register(t0);
+SamplerState      gSampler : register(s0);
+
+float4 PSMain(float4 pos : SV_Position) : SV_Target0
+{
+    // Texture coordinates from NDC position
+    float2 uv = pos.xy * float2(1.0, -1.0) * rcp(pos.w) * 0.5 + 0.5;
+    return gTexture.Sample(gSampler, uv);
+}
+)";
+
+#if defined(DEBUG) || defined(_DEBUG)
+ID3D12Debug* pDebug = nullptr;
+ID3D12Debug1* pDebugLayers = nullptr;
+#endif
+
+void initGFXDebug()
+{
+#if defined(DEBUG) || defined(_DEBUG)
+	HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug));
+
+	assert(SUCCEEDED(hr) && "failed to init debug");
+
+	if (pDebug)
+	{
+		pDebug->EnableDebugLayer();
+
+		auto status = pDebug->QueryInterface(IID_PPV_ARGS(&pDebugLayers));
+
+		if (SUCCEEDED(status))
+		{
+			pDebugLayers->SetEnableGPUBasedValidation(TRUE);
+			pDebugLayers->SetEnableSynchronizedCommandQueueValidation(TRUE);
+			pDebugLayers->Release();
+		}
+
+		pDebug->Release();
+	}
+
+#endif
+}
 
 /// @brief We make a really simple assumption of your game engine's backend (or just engine for 3d visualization CAD, any other 3d software), so we
 /// make a such simple backend only for demonstration purposes and simplier explanation however if you have some really complex backends and you have
@@ -109,7 +158,9 @@ private:
 	void InitializeDepthBuffer();
 	void InitializePostprocessTexture(int nWidth, int nHeight);
 	void InitializeRootSignature();
+	void InitializeRootSignature_Postprocess();
 	void InitializePipelineState();
+	void InitializePipelineState_Postprocess();
 	void InitializeBoxGeometry();
 	void InitializeConstantBuffer();
 	void InitializeFence();
@@ -134,7 +185,6 @@ private:
 	float m_aspectRatio;
 	float m_cameraAngle = 0.0f;
 	bool m_resizePending = false;
-
 	ComPtr<ID3D12Device> m_device;
 	ComPtr<IDXGISwapChain3> m_swapChain;
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
@@ -146,7 +196,9 @@ private:
 	ComPtr<ID3D12DescriptorHeap> m_srvHeap;
 	ComPtr<ID3D12Resource> m_depthStencil;
 	ComPtr<ID3D12RootSignature> m_rootSignature;
+	ComPtr<ID3D12RootSignature> m_rootSignaturePostprocess;
 	ComPtr<ID3D12PipelineState> m_pipelineState;
+	ComPtr<ID3D12PipelineState> m_pipelineStatePostprocess;
 	ComPtr<ID3D12Resource> m_vertexBuffer;
 	ComPtr<ID3D12Resource> m_indexBuffer;
 	ComPtr<ID3D12Resource> m_constantBuffer[FrameCount];
@@ -157,6 +209,7 @@ private:
 		ID3D12Resource* p_res_rt = nullptr;
 		D3D12_CPU_DESCRIPTOR_HANDLE rtv = {0};
 		D3D12_CPU_DESCRIPTOR_HANDLE srv = {0};
+		D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu = {0};
 
 		ID3D12Resource* p_res_ds = nullptr;
 		D3D12_CPU_DESCRIPTOR_HANDLE rtv_ds = {0};
@@ -203,7 +256,9 @@ void D3D12Renderer::Initialize()
 	InitializeDepthBuffer();
 	InitializePostprocessTexture(m_width, m_height);
 	InitializeRootSignature();
+	InitializeRootSignature_Postprocess();
 	InitializePipelineState();
+	InitializePipelineState_Postprocess();
 	InitializeBoxGeometry();
 	InitializeConstantBuffer();
 	InitializeFence();
@@ -253,41 +308,6 @@ void D3D12Renderer::InitializeDevice()
 			break;
 		}
 	}
-
-#if 0
-	ID3D12Debug* p_debug{};
-
-	HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(&p_debug));
-	assert(SUCCEEDED(hr));
-
-	if (p_debug)
-	{
-		p_debug->EnableDebugLayer();
-
-	#ifdef RMLUI_DX_DEBUG
-		Rml::Log::Message(Rml::Log::Type::LT_DEBUG, "[DirectX-12] Debug Layer = ENABLED!");
-	#endif
-
-		ID3D12Debug1* p_sdk_layers{};
-
-		auto status = p_debug->QueryInterface(IID_PPV_ARGS(&p_sdk_layers));
-
-		assert(SUCCEEDED(status));
-
-		if (SUCCEEDED(status))
-		{
-			p_sdk_layers->SetEnableGPUBasedValidation(TRUE);
-			p_sdk_layers->SetEnableSynchronizedCommandQueueValidation(TRUE);
-			p_sdk_layers->Release();
-
-	#ifdef RMLUI_DX_DEBUG
-			Rml::Log::Message(Rml::Log::Type::LT_DEBUG, "[DirectX-12] GPU validation =  ENABLED!");
-	#endif
-		}
-
-		p_debug->Release();
-	}
-#endif
 }
 
 void D3D12Renderer::InitializeCommandObjects()
@@ -348,6 +368,7 @@ void D3D12Renderer::InitializePostprocessTexture(int nWidth, int nHeight)
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
 	srvHeapDesc.NumDescriptors = 2;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_srvHeap));
 
 	m_srvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -408,6 +429,7 @@ void D3D12Renderer::InitializePostprocessTexture(int nWidth, int nHeight)
 
 	m_postprocess_texture.srv = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
 	m_device->CreateShaderResourceView(m_postprocess_texture.p_res_rt, &srvDesc, m_postprocess_texture.srv);
+	m_postprocess_texture.srv_gpu = m_srvHeap->GetGPUDescriptorHandleForHeapStart();
 
 	D3D12_RESOURCE_DESC depthDesc = {};
 	depthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -539,6 +561,70 @@ void D3D12Renderer::InitializeRootSignature()
 	m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature));
 }
 
+void D3D12Renderer::InitializeRootSignature_Postprocess()
+{
+	// 1.  Descriptor ranges --------------------------------------------------
+	D3D12_DESCRIPTOR_RANGE range[1] = {};
+
+	// SRV (t0) visible to pixel shader
+	range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	range[0].NumDescriptors = 1;
+	range[0].BaseShaderRegister = 0;
+	range[0].RegisterSpace = 0;
+	range[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	// 2.  Root parameters ----------------------------------------------------
+	D3D12_ROOT_PARAMETER rootParams[1] = {};
+
+	// Parameter 0 : SRV table
+	rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParams[0].DescriptorTable.NumDescriptorRanges = 1;
+	rootParams[0].DescriptorTable.pDescriptorRanges = &range[0];
+
+	D3D12_STATIC_SAMPLER_DESC staticSampler = {};
+	staticSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	staticSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	staticSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	staticSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	staticSampler.MipLODBias = 0.f;
+	staticSampler.MaxAnisotropy = 1;
+	staticSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+	staticSampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+	staticSampler.MinLOD = 0.f;
+	staticSampler.MaxLOD = D3D12_FLOAT32_MAX;
+	staticSampler.ShaderRegister = 0; // matches s0 in HLSL
+	staticSampler.RegisterSpace = 0;
+	staticSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	// 3.  Root signature desc ------------------------------------------------
+	D3D12_ROOT_SIGNATURE_DESC desc = {};
+	desc.NumParameters = _countof(rootParams);
+	desc.pParameters = rootParams;
+	desc.NumStaticSamplers = 1;
+	desc.pStaticSamplers = &staticSampler;
+	desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	// 4.  Serialize and create -----------------------------------------------
+	ID3DBlob* pSigBlob = nullptr;
+	ID3DBlob* pErrorBlob = nullptr;
+
+	HRESULT hr = D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1_0, &pSigBlob, &pErrorBlob);
+	if (FAILED(hr))
+	{
+		if (pErrorBlob)
+		{
+			MessageBoxA(m_hwnd, (char*)pErrorBlob->GetBufferPointer(), "ERR", 0);
+			pErrorBlob->Release();
+		}
+	}
+
+	hr = m_device->CreateRootSignature(0, pSigBlob->GetBufferPointer(), pSigBlob->GetBufferSize(), IID_PPV_ARGS(&m_rootSignaturePostprocess));
+	pSigBlob->Release();
+	if (pErrorBlob)
+		pErrorBlob->Release();
+}
+
 void D3D12Renderer::InitializePipelineState()
 {
 	ComPtr<ID3DBlob> vertexShader;
@@ -610,6 +696,75 @@ void D3D12Renderer::InitializePipelineState()
 	psoDesc.SampleDesc.Count = 1;
 
 	m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
+}
+
+void D3D12Renderer::InitializePipelineState_Postprocess()
+{
+	ComPtr<ID3DBlob> vertexShader;
+	ComPtr<ID3DBlob> pixelShader;
+
+	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+	HRESULT compile_status = D3DCompile(pShaderSourceText_Offscreen, sizeof(pShaderSourceText_Offscreen), nullptr, nullptr, nullptr, "VSMain",
+		"vs_5_0", compileFlags, 0, &vertexShader, nullptr);
+	assert(SUCCEEDED(compile_status) && "failed to compile vertex shader");
+
+	compile_status = D3DCompile(pShaderSourceText_OffscreenPixel, sizeof(pShaderSourceText_OffscreenPixel), nullptr, nullptr, nullptr, "PSMain",
+		"ps_5_0", compileFlags, 0, &pixelShader, nullptr);
+	assert(SUCCEEDED(compile_status) && "failed to compile pixel shader");
+
+	D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
+	psoDesc.pRootSignature = m_rootSignaturePostprocess.Get();
+	psoDesc.VS = {vertexShader->GetBufferPointer(), vertexShader->GetBufferSize()};
+	psoDesc.PS = {pixelShader->GetBufferPointer(), pixelShader->GetBufferSize()};
+
+	// Rasterizer state
+	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	psoDesc.RasterizerState.FrontCounterClockwise = FALSE;
+	psoDesc.RasterizerState.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+	psoDesc.RasterizerState.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+	psoDesc.RasterizerState.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+	psoDesc.RasterizerState.DepthClipEnable = TRUE;
+	psoDesc.RasterizerState.MultisampleEnable = FALSE;
+	psoDesc.RasterizerState.AntialiasedLineEnable = FALSE;
+	psoDesc.RasterizerState.ForcedSampleCount = 0;
+	psoDesc.RasterizerState.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+
+	// Blend state
+	D3D12_BLEND_DESC blendDesc = {};
+	blendDesc.AlphaToCoverageEnable = FALSE;
+	blendDesc.IndependentBlendEnable = FALSE;
+	for (UINT i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+	{
+		blendDesc.RenderTarget[i].BlendEnable = FALSE;
+		blendDesc.RenderTarget[i].LogicOpEnable = FALSE;
+		blendDesc.RenderTarget[i].SrcBlend = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[i].DestBlend = D3D12_BLEND_ZERO;
+		blendDesc.RenderTarget[i].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[i].SrcBlendAlpha = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[i].DestBlendAlpha = D3D12_BLEND_ZERO;
+		blendDesc.RenderTarget[i].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[i].LogicOp = D3D12_LOGIC_OP_NOOP;
+		blendDesc.RenderTarget[i].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	}
+	psoDesc.BlendState = blendDesc;
+
+	// Depth stencil state
+	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = {};
+	depthStencilDesc.DepthEnable = FALSE;
+
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDesc.SampleDesc.Count = 1;
+
+	m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineStatePostprocess));
 }
 
 void D3D12Renderer::InitializeBoxGeometry()
@@ -854,18 +1009,6 @@ void D3D12Renderer::Render(Rml::Context* p_context)
 	Backend::RmlRenderInput rtv_arg;
 	Backend::RmlRenderInput dsv_arg;
 
-	/*
-	    Note: That's supposed for a situation where you would like to use your own swapchain render targets and render them directly using frame
-	   buffer index
-
-
-	    rtv_arg.p_input_present_resource = m_renderTargets[m_frameIndex].Get();
-	    rtv_arg.p_input_present_resource_binding = &rtvHandle;
-
-	    dsv_arg.p_input_present_resource = m_depthStencil.Get();
-	    dsv_arg.p_input_present_resource_binding = &dsvHandle;
-	*/
-
 	rtv_arg.p_input_present_resource = m_postprocess_texture.p_res_rt;
 	rtv_arg.p_input_present_resource_binding = &m_postprocess_texture.rtv;
 
@@ -883,6 +1026,46 @@ void D3D12Renderer::Render(Rml::Context* p_context)
 	}
 
 	Backend::EndFrame();
+
+	// draw postprocess
+	{
+		D3D12_RESOURCE_BARRIER barrier_postprocess;
+
+		barrier_postprocess.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier_postprocess.Transition.pResource = m_postprocess_texture.p_res_rt;
+		barrier_postprocess.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barrier_postprocess.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		barrier_postprocess.Transition.Subresource = 0;
+		barrier_postprocess.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+
+		m_commandList->ResourceBarrier(1, &barrier_postprocess);
+		m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+
+		m_commandList->SetPipelineState(m_pipelineStatePostprocess.Get());
+
+		ID3D12DescriptorHeap* pHeaps[] = {m_srvHeap.Get()
+		};
+		m_commandList->SetDescriptorHeaps(1, pHeaps);
+		m_commandList->SetGraphicsRootSignature(m_rootSignaturePostprocess.Get());
+		m_commandList->SetGraphicsRootDescriptorTable(0, m_postprocess_texture.srv_gpu);
+		m_commandList->IASetVertexBuffers(0, 0, nullptr);
+		m_commandList->IASetIndexBuffer(nullptr);
+		m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		m_commandList->DrawInstanced(3, 1, 0, 0);
+
+		{
+			D3D12_RESOURCE_BARRIER barrier_restore;
+
+			barrier_restore.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+			barrier_restore.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+			barrier_restore.Transition.pResource = m_postprocess_texture.p_res_rt;
+			barrier_restore.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+			barrier_restore.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+			barrier_restore.Transition.Subresource = 0;
+
+			m_commandList->ResourceBarrier(1, &barrier_restore);
+		}
+	}
 
 	// Transition back to present
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -967,6 +1150,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 /// @return
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
+	initGFXDebug();
+
 	const UINT initialWidth = 800;
 	const UINT initialHeight = 600;
 
