@@ -101,7 +101,7 @@ SamplerState      gSampler : register(s0);
 
 float4 PSMain(VOut in_vert) : SV_Target0
 {
-    return gTexture.Sample(gSampler, in_vert.uv);
+	return gTexture.Sample(gSampler, in_vert.uv);    
 }
 )";
 
@@ -402,7 +402,7 @@ void D3D12Renderer::InitializePostprocessTexture(int nWidth, int nHeight)
 	// Set clear value
 	D3D12_CLEAR_VALUE clearValue = {};
 	clearValue.Format = texDesc.Format;
-	float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+	float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 	memcpy(clearValue.Color, clearColor, sizeof(float) * 4);
 
 	// Create heap properties
@@ -715,7 +715,7 @@ void D3D12Renderer::InitializePipelineState_Postprocess()
 {
 	ComPtr<ID3DBlob> vertexShader;
 	ComPtr<ID3DBlob> pixelShader;
-	
+
 	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 	HRESULT compile_status = D3DCompile(pShaderSourceText_Offscreen, sizeof(pShaderSourceText_Offscreen), nullptr, nullptr, nullptr, "VSMain",
 		"vs_5_0", compileFlags, 0, &vertexShader, nullptr);
@@ -752,13 +752,13 @@ void D3D12Renderer::InitializePipelineState_Postprocess()
 	blendDesc.IndependentBlendEnable = FALSE;
 	for (UINT i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
 	{
-		blendDesc.RenderTarget[i].BlendEnable = FALSE;
+		blendDesc.RenderTarget[i].BlendEnable = TRUE;
 		blendDesc.RenderTarget[i].LogicOpEnable = FALSE;
 		blendDesc.RenderTarget[i].SrcBlend = D3D12_BLEND_ONE;
-		blendDesc.RenderTarget[i].DestBlend = D3D12_BLEND_ZERO;
+		blendDesc.RenderTarget[i].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
 		blendDesc.RenderTarget[i].BlendOp = D3D12_BLEND_OP_ADD;
 		blendDesc.RenderTarget[i].SrcBlendAlpha = D3D12_BLEND_ONE;
-		blendDesc.RenderTarget[i].DestBlendAlpha = D3D12_BLEND_ZERO;
+		blendDesc.RenderTarget[i].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
 		blendDesc.RenderTarget[i].BlendOpAlpha = D3D12_BLEND_OP_ADD;
 		blendDesc.RenderTarget[i].LogicOp = D3D12_LOGIC_OP_NOOP;
 		blendDesc.RenderTarget[i].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
@@ -1030,6 +1030,11 @@ void D3D12Renderer::Render(Rml::Context* p_context)
 
 	dsv_arg.p_input_present_resource = m_postprocess_texture.p_res_ds;
 	dsv_arg.p_input_present_resource_binding = &m_postprocess_texture.rtv_ds;
+
+	// otherwise initially it will have alpha as 1.0 and information from RmlUi will be not overwritten 
+	// and thus we won't get adequate blending
+	constexpr float clearValue[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+	m_commandList->ClearRenderTargetView(m_postprocess_texture.rtv, clearValue, 0, 0);
 
 	// Draw RmlUi in your engine
 	// but keep in mind that we don't make barrier thing for your passed input arguments since it supposed that you have their state as render target
