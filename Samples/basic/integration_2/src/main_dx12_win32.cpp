@@ -71,24 +71,37 @@ float4 PSMain(PSInput input) : SV_TARGET {
 })";
 
 constexpr const char pShaderSourceText_Offscreen[] = R"(
-float4 VSMain(uint vid : SV_VertexID) : SV_Position
+struct VOut
 {
-    float2 uv = float2((vid << 1) & 2, vid & 2);
-    float4 pos = float4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
 
-    return pos;
+VOut VSMain(uint vid : SV_VertexID)
+{
+	float2 vert_pos[4] = { {-1,-1}, {1,-1}, {-1,1}, {1,1} };   // NDC corners
+    float2 vert_uv[4]    = { {0,1},  {1,1},  {0,0}, {1,0} };     // UV corners
+
+    VOut o;
+    o.pos = float4(vert_pos[vid], 0.0, 1.0);
+    o.uv  = vert_uv[vid];
+    return o;
 }
 )";
 
 constexpr const char pShaderSourceText_OffscreenPixel[] = R"(
+struct VOut
+{
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
 Texture2D<float4> gTexture : register(t0);
 SamplerState      gSampler : register(s0);
 
-float4 PSMain(float4 pos : SV_Position) : SV_Target0
+float4 PSMain(VOut in_vert) : SV_Target0
 {
-    // Texture coordinates from NDC position
-    float2 uv = pos.xy * float2(1.0, -1.0) * rcp(pos.w) * 0.5 + 0.5;
-    return gTexture.Sample(gSampler, uv);
+    return gTexture.Sample(gSampler, in_vert.uv);
 }
 )";
 
@@ -702,12 +715,11 @@ void D3D12Renderer::InitializePipelineState_Postprocess()
 {
 	ComPtr<ID3DBlob> vertexShader;
 	ComPtr<ID3DBlob> pixelShader;
-
+	
 	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 	HRESULT compile_status = D3DCompile(pShaderSourceText_Offscreen, sizeof(pShaderSourceText_Offscreen), nullptr, nullptr, nullptr, "VSMain",
 		"vs_5_0", compileFlags, 0, &vertexShader, nullptr);
 	assert(SUCCEEDED(compile_status) && "failed to compile vertex shader");
-
 	compile_status = D3DCompile(pShaderSourceText_OffscreenPixel, sizeof(pShaderSourceText_OffscreenPixel), nullptr, nullptr, nullptr, "PSMain",
 		"ps_5_0", compileFlags, 0, &pixelShader, nullptr);
 	assert(SUCCEEDED(compile_status) && "failed to compile pixel shader");
@@ -723,7 +735,7 @@ void D3D12Renderer::InitializePipelineState_Postprocess()
 
 	// Rasterizer state
 	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 	psoDesc.RasterizerState.FrontCounterClockwise = FALSE;
 	psoDesc.RasterizerState.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
 	psoDesc.RasterizerState.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
@@ -756,6 +768,10 @@ void D3D12Renderer::InitializePipelineState_Postprocess()
 	// Depth stencil state
 	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = {};
 	depthStencilDesc.DepthEnable = FALSE;
+	depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	depthStencilDesc.StencilEnable = FALSE;
+	psoDesc.DepthStencilState = depthStencilDesc;
 
 	psoDesc.SampleMask = UINT_MAX;
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -1039,8 +1055,7 @@ void D3D12Renderer::Render(Rml::Context* p_context)
 		barrier_postprocess.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 
 		m_commandList->ResourceBarrier(1, &barrier_postprocess);
-		m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-
+		m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 		m_commandList->SetPipelineState(m_pipelineStatePostprocess.Get());
 
 		ID3D12DescriptorHeap* pHeaps[] = {m_srvHeap.Get()
@@ -1050,8 +1065,8 @@ void D3D12Renderer::Render(Rml::Context* p_context)
 		m_commandList->SetGraphicsRootDescriptorTable(0, m_postprocess_texture.srv_gpu);
 		m_commandList->IASetVertexBuffers(0, 0, nullptr);
 		m_commandList->IASetIndexBuffer(nullptr);
-		m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		m_commandList->DrawInstanced(3, 1, 0, 0);
+		m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+		m_commandList->DrawInstanced(4, 1, 0, 0);
 
 		{
 			D3D12_RESOURCE_BARRIER barrier_restore;
