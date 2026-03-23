@@ -829,12 +829,6 @@ RenderInterface_DX12::RenderInterface_DX12(void* p_window_handle, const Backend:
 	RMLUI_ZoneScopedN("DirectX 12 - Constructor (non user)");
 	RMLUI_ASSERTMSG(p_window_handle, "you can't pass an empty window handle! (also it must be castable to HWND)");
 
-	if (m_msaa_sample_count <= 1)
-	{
-		RMLUI_ERRORMSG("MSAA sampling was set to disabled, but the DirectX 12 renderer currently only supports MSAA sampling count of 2 or greater.");
-		return;
-	}
-
 	m_p_window_handle = static_cast<HWND>(p_window_handle);
 
 	std::memset(m_pipelines, 0, sizeof(m_pipelines));
@@ -1229,6 +1223,7 @@ void RenderInterface_DX12::EndFrame()
 		RMLUI_ASSERTMSG(p_msaa_texture->GetDesc().Width == p_postprocess_texture->GetDesc().Width, "must be same otherwise use blitframebuffer!");
 		RMLUI_ASSERTMSG(p_msaa_texture->GetDesc().Height == p_postprocess_texture->GetDesc().Height, "must be same otherwise use blitframebuffer!");
 
+#if RMLUI_RENDER_BACKEND_FIELD_MSAA_SAMPLE_COUNT > 1
 		D3D12_RESOURCE_BARRIER barriers[2]{};
 
 		barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -1267,15 +1262,48 @@ void RenderInterface_DX12::EndFrame()
 		offscreen_texture_barrier_for_shader.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		offscreen_texture_barrier_for_shader.Transition.StateBefore = D3D12_RESOURCE_STATE_RESOLVE_DEST;
 
-		D3D12_RESOURCE_BARRIER restore_state_of_postprocess_texture_return_to_rt;
-		restore_state_of_postprocess_texture_return_to_rt.Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		restore_state_of_postprocess_texture_return_to_rt.Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		restore_state_of_postprocess_texture_return_to_rt.Transition.Subresource = 0;
-		restore_state_of_postprocess_texture_return_to_rt.Transition.pResource = p_postprocess_texture;
-		restore_state_of_postprocess_texture_return_to_rt.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		restore_state_of_postprocess_texture_return_to_rt.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		m_p_command_graphics_list->ResourceBarrier(1, &offscreen_texture_barrier_for_shader);
+#else
+		D3D12_RESOURCE_BARRIER barriers[2]{};
+
+		barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barriers[0].Transition.Subresource = 0;
+		barriers[0].Transition.pResource = p_msaa_texture;
+		barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+		barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+		barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barriers[1].Transition.Subresource = 0;
+		barriers[1].Transition.pResource = p_postprocess_texture;
+		barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+		barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+		D3D12_RESOURCE_BARRIER barrier_transition_from_msaa_resolve_source_to_rt;
+		barrier_transition_from_msaa_resolve_source_to_rt.Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier_transition_from_msaa_resolve_source_to_rt.Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier_transition_from_msaa_resolve_source_to_rt.Transition.Subresource = 0;
+		barrier_transition_from_msaa_resolve_source_to_rt.Transition.pResource = p_msaa_texture;
+		barrier_transition_from_msaa_resolve_source_to_rt.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barrier_transition_from_msaa_resolve_source_to_rt.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+		m_p_command_graphics_list->ResourceBarrier(2, barriers);
+
+		m_p_command_graphics_list->CopyResource(p_postprocess_texture, p_msaa_texture);
+
+		m_p_command_graphics_list->ResourceBarrier(1, &barrier_transition_from_msaa_resolve_source_to_rt);
+
+		D3D12_RESOURCE_BARRIER offscreen_texture_barrier_for_shader;
+		offscreen_texture_barrier_for_shader.Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		offscreen_texture_barrier_for_shader.Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		offscreen_texture_barrier_for_shader.Transition.pResource = p_postprocess_texture;
+		offscreen_texture_barrier_for_shader.Transition.Subresource = 0;
+		offscreen_texture_barrier_for_shader.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		offscreen_texture_barrier_for_shader.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
 
 		m_p_command_graphics_list->ResourceBarrier(1, &offscreen_texture_barrier_for_shader);
+#endif
 
 		D3D12_CPU_DESCRIPTOR_HANDLE handle_rtv(m_p_descriptor_heap_render_target_view->GetCPUDescriptorHandleForHeapStart());
 		handle_rtv.ptr += m_current_back_buffer_index * (m_size_descriptor_heap_render_target_view);
@@ -1292,6 +1320,14 @@ void RenderInterface_DX12::EndFrame()
 		m_manager_render_layer.EndFrame();
 
 		m_p_command_graphics_list->ResourceBarrier(1, &backbuffer_barrier_from_rt_to_present);
+
+		D3D12_RESOURCE_BARRIER restore_state_of_postprocess_texture_return_to_rt;
+		restore_state_of_postprocess_texture_return_to_rt.Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		restore_state_of_postprocess_texture_return_to_rt.Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		restore_state_of_postprocess_texture_return_to_rt.Transition.Subresource = 0;
+		restore_state_of_postprocess_texture_return_to_rt.Transition.pResource = p_postprocess_texture;
+		restore_state_of_postprocess_texture_return_to_rt.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		restore_state_of_postprocess_texture_return_to_rt.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		m_p_command_graphics_list->ResourceBarrier(1, &restore_state_of_postprocess_texture_return_to_rt);
 
 		RMLUI_DX_MARKER_END(m_p_command_graphics_list);
@@ -2368,6 +2404,7 @@ void RenderInterface_DX12::BlitLayerToPostprocessPrimary(Rml::LayerHandle layer_
 	RMLUI_ASSERTMSG(p_src->GetDesc().Width == p_dst->GetDesc().Width, "must be same otherwise use blitframebuffer");
 	RMLUI_ASSERTMSG(p_src->GetDesc().Height == p_dst->GetDesc().Height, "must be same otherwise use blitframebuffer");
 
+#if RMLUI_RENDER_BACKEND_FIELD_MSAA_SAMPLE_COUNT > 1
 	D3D12_RESOURCE_BARRIER barriers[2];
 	barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
 	barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -2402,6 +2439,42 @@ void RenderInterface_DX12::BlitLayerToPostprocessPrimary(Rml::LayerHandle layer_
 	barriers[1].Transition.Subresource = 0;
 
 	m_p_command_graphics_list->ResourceBarrier(2, barriers);
+#else
+	D3D12_RESOURCE_BARRIER barriers[2];
+	barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barriers[0].Transition.pResource = p_src;
+	barriers[0].Transition.Subresource = 0;
+	barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+	barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+	barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAGS::D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE::D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barriers[1].Transition.pResource = p_dst;
+	barriers[1].Transition.Subresource = 0;
+	barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+	barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+	m_p_command_graphics_list->ResourceBarrier(2, barriers);
+
+	m_p_command_graphics_list->CopyResource(p_dst, p_src);
+
+	barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barriers[0].Transition.pResource = p_dst;
+	barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+	barriers[0].Transition.Subresource = 0;
+
+	barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barriers[1].Transition.pResource = p_src;
+	barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+	barriers[1].Transition.Subresource = 0;
+
+	m_p_command_graphics_list->ResourceBarrier(2, barriers);
+#endif
 
 	RMLUI_DX_MARKER_END(m_p_command_graphics_list);
 }
@@ -8204,8 +8277,8 @@ void RenderInterface_DX12::BufferMemoryManager::Free_Geometry(GeometryHandleType
 			if (p_block_vertex)
 			{
 #ifdef RMLUI_DX_DEBUG
-				Rml::Log::Message(Rml::Log::Type::LT_DEBUG, "[DirectX-12] deallocated vertex buffer with size[%zu] in buffer[%d] frame[%d]", info_vertex.size,
-					info_vertex.buffer_index, p_handle->Get_HistoryBackBufferFrameIndex());
+				Rml::Log::Message(Rml::Log::Type::LT_DEBUG, "[DirectX-12] deallocated vertex buffer with size[%zu] in buffer[%d] frame[%d]",
+					info_vertex.size, info_vertex.buffer_index, p_handle->Get_HistoryBackBufferFrameIndex());
 #endif
 
 				p_block_vertex->FreeAllocation(info_vertex.alloc_info);
