@@ -135,6 +135,9 @@ public:
 		const OffsetAllocator::Allocation& Get_Allocation_DescriptorHeap() const noexcept { return m_allocation_descriptor_heap; }
 		void Set_Allocation_DescriptorHeap(const OffsetAllocator::Allocation& allocation) noexcept { m_allocation_descriptor_heap = allocation; }
 
+		int Get_HistoryBackBufferFrameIndex(void) const { return m_history_backbuffer_frame_index; }
+		void Set_HistoryBackBufferFrameIndex(int frame_index) { m_history_backbuffer_frame_index = frame_index; }
+
 		void Set_ConstantBuffer(ConstantBufferType* p_constant_buffer)
 		{
 			RMLUI_ASSERTMSG(p_constant_buffer, "must be valid constant buffer!");
@@ -202,6 +205,7 @@ public:
 	private:
 		int m_num_vertices = {};
 		int m_num_indices = {};
+		int m_history_backbuffer_frame_index = -1;
 		ConstantBufferType* m_p_constant_buffer_override = {};
 		size_t m_one_element_vertex_size = {};
 		size_t m_one_element_index_size = {};
