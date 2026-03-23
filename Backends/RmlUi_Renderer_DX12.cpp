@@ -1138,7 +1138,6 @@ RenderInterface_DX12::operator bool() const
 void RenderInterface_DX12::BeginFrame()
 {
 	RMLUI_ZoneScopedN("DirectX 12 - BeginFrame");
-	Update_PendingForDeletion_Geometry();
 
 	auto* p_command_allocator = m_backbuffers_allocators.at(m_current_back_buffer_index);
 
@@ -1323,7 +1322,7 @@ void RenderInterface_DX12::EndFrame()
 		m_current_back_buffer_index = (uint32_t)m_p_swapchain->GetCurrentBackBufferIndex();
 
 		WaitForFenceValue(m_current_back_buffer_index);
-
+		Update_PendingForDeletion_Geometry();
 		m_backbuffers_fence_values[m_current_back_buffer_index] = fence_value + 1;
 	}
 }
@@ -1643,6 +1642,8 @@ Rml::CompiledGeometryHandle RenderInterface_DX12::CompileGeometry(Rml::Span<cons
 	{
 		m_manager_buffer.Alloc_Vertex(vertices.data(), static_cast<int>(vertices.size()), sizeof(Rml::Vertex), p_handle);
 		m_manager_buffer.Alloc_Index(indices.data(), static_cast<int>(indices.size()), sizeof(int), p_handle);
+
+		p_handle->Set_HistoryBackBufferFrameIndex(m_current_back_buffer_index);
 	}
 
 	return reinterpret_cast<Rml::CompiledGeometryHandle>(p_handle);
@@ -8203,8 +8204,8 @@ void RenderInterface_DX12::BufferMemoryManager::Free_Geometry(GeometryHandleType
 			if (p_block_vertex)
 			{
 #ifdef RMLUI_DX_DEBUG
-				Rml::Log::Message(Rml::Log::Type::LT_DEBUG, "[DirectX-12] deallocated vertex buffer with size[%zu] in buffer[%d]", info_vertex.size,
-					info_vertex.buffer_index);
+				Rml::Log::Message(Rml::Log::Type::LT_DEBUG, "[DirectX-12] deallocated vertex buffer with size[%zu] in buffer[%d] frame[%d]", info_vertex.size,
+					info_vertex.buffer_index, p_handle->Get_HistoryBackBufferFrameIndex());
 #endif
 
 				p_block_vertex->FreeAllocation(info_vertex.alloc_info);
