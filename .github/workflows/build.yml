@@ -131,9 +131,12 @@ jobs:
         include:
           - cmake_options: -DRMLUI_BACKEND=auto -DRMLUI_PRECOMPILED_HEADERS=OFF
           - cmake_options: -DRMLUI_BACKEND=Win32_VK -DRMLUI_VK_DEBUG=ON
+            build_type: Debug
           - cmake_options: -DRMLUI_BACKEND=SDL_VK -DRMLUI_LUA_BINDINGS_LIBRARY=luajit
+          - cmake_options: -DRMLUI_BACKEND=GLFW_VK
           - cmake_options: -DRMLUI_BACKEND=Win32_DX12
-          - cmake_options: -DRMLUI_BACKEND=GLFW_DX12
+          - cmake_options: -DRMLUI_BACKEND=SDL_DX12
+          - cmake_options: -DRMLUI_BACKEND=GLFW_DX12 -DRMLUI_DX_DEBUG=ON
             build_type: Debug
 
     steps:

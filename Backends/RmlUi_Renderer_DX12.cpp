@@ -15,6 +15,12 @@
 	#error unable to compile platform specific renderer required Windows OS that support DirectX-12
 #endif
 
+#ifdef RMLUI_DEBUG
+	#define RMLUI_ATTR_ASSERT_VARIABLE
+#else
+	#define RMLUI_ATTR_ASSERT_VARIABLE [[maybe_unused]]
+#endif
+
 #ifdef RMLUI_DX_DEBUG
 	#include <d3d12sdklayers.h>
 	#include <dxgidebug.h>
@@ -966,13 +972,13 @@ RenderInterface_DX12::~RenderInterface_DX12()
 
 	if (m_p_command_graphics_list_screenshot)
 	{
-		auto ref_count = m_p_command_graphics_list_screenshot->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_command_graphics_list_screenshot->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 	}
 
 	if (m_p_command_allocator_screenshot)
 	{
-		auto ref_count = m_p_command_allocator_screenshot->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_command_allocator_screenshot->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 	}
 
@@ -987,67 +993,67 @@ RenderInterface_DX12::~RenderInterface_DX12()
 
 		if (m_p_command_graphics_list)
 		{
-			auto ref_count = m_p_command_graphics_list->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_command_graphics_list->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_command_queue)
 		{
-			auto ref_count = m_p_command_queue->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_command_queue->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_descriptor_heap_render_target_view)
 		{
-			auto ref_count = m_p_descriptor_heap_render_target_view->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_descriptor_heap_render_target_view->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_descriptor_heap_render_target_view_for_texture_manager)
 		{
-			auto ref_count = m_p_descriptor_heap_render_target_view_for_texture_manager->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_descriptor_heap_render_target_view_for_texture_manager->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_descriptor_heap_depth_stencil_view_for_texture_manager)
 		{
-			auto ref_count = m_p_descriptor_heap_depth_stencil_view_for_texture_manager->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_descriptor_heap_depth_stencil_view_for_texture_manager->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_descriptor_heap_shaders)
 		{
-			auto ref_count = m_p_descriptor_heap_shaders->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_descriptor_heap_shaders->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_descriptor_heap_depthstencil)
 		{
-			auto ref_count = m_p_descriptor_heap_depthstencil->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_descriptor_heap_depthstencil->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_copy_command_list)
 		{
-			auto ref_count = m_p_copy_command_list->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_copy_command_list->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_copy_allocator)
 		{
-			auto ref_count = m_p_copy_allocator->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_copy_allocator->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_copy_queue)
 		{
-			auto ref_count = m_p_copy_queue->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_copy_queue->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
 		if (m_p_adapter)
 		{
-			auto ref_count = m_p_adapter->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_adapter->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 
@@ -1056,7 +1062,7 @@ RenderInterface_DX12::~RenderInterface_DX12()
 			// if here you got assert on debug that's 100% leak and not just showing some connections that will be later released like other instances
 			// might show (but not true due to correct order of deallocations you get the correct report of unhanleded aka not released resources in
 			// dx12), so in good scenario every instance must return ref_count == 0
-			auto ref_count = m_p_device->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_device->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 	}
@@ -2955,14 +2961,14 @@ void RenderInterface_DX12::RenderBlur(float sigma, const Gfx::FramebufferData& s
 		{
 			// we expect only committed allocated resources
 			ValidateTextureAllocationNotAsPlaced(source_destination);
-			ID3D12Resource* p_resource_sd = GetResourceFromFramebufferData(source_destination);
+			RMLUI_ATTR_ASSERT_VARIABLE ID3D12Resource* p_resource_sd = GetResourceFromFramebufferData(source_destination);
 			RMLUI_ASSERTMSG(p_resource_sd, "failed to obtain resource from source_destination framebuffer!");
 		}
 		else
 		{
 			// we expect only committed allocated resources
 			ValidateTextureAllocationNotAsPlaced(temp);
-			ID3D12Resource* p_resource_t = GetResourceFromFramebufferData(temp);
+			RMLUI_ATTR_ASSERT_VARIABLE ID3D12Resource* p_resource_t = GetResourceFromFramebufferData(temp);
 			RMLUI_ASSERTMSG(p_resource_t, "failed to obtain resource from temp framebuffer!");
 		}
 
@@ -3245,7 +3251,8 @@ void RenderInterface_DX12::RenderFilters(Rml::Span<const Rml::CompiledFilterHand
 			RMLUI_ASSERTMSG(p_texture_destination->Get_Resource(), "must contain a valid resource");
 
 			D3D12MA::Allocation* p_allocation_source = static_cast<D3D12MA::Allocation*>(p_texture_source->Get_Resource());
-			D3D12MA::Allocation* p_allocation_destination = static_cast<D3D12MA::Allocation*>(p_texture_destination->Get_Resource());
+			RMLUI_ATTR_ASSERT_VARIABLE D3D12MA::Allocation* p_allocation_destination =
+				static_cast<D3D12MA::Allocation*>(p_texture_destination->Get_Resource());
 
 			RMLUI_ASSERTMSG(p_allocation_source->GetResource(), "allocation must contain a valid pointer to resource! something is broken");
 			RMLUI_ASSERTMSG(p_allocation_destination->GetResource(), "allocation must contain a valid pointer to resource! something is broken");
@@ -4830,7 +4837,7 @@ void RenderInterface_DX12::Destroy_Swapchain() noexcept
 	RMLUI_ZoneScopedN("DirectX 12 - Destroy_Swapchain");
 	if (m_p_swapchain)
 	{
-		auto ref_count = m_p_swapchain->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_swapchain->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 	}
 
@@ -4842,7 +4849,7 @@ void RenderInterface_DX12::Destroy_SyncPrimitives() noexcept
 	RMLUI_ZoneScopedN("DirectX 12 - Destroy_SyncPrimitives");
 	if (m_p_backbuffer_fence)
 	{
-		auto ref_count = m_p_backbuffer_fence->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_backbuffer_fence->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 	}
 
@@ -4857,7 +4864,7 @@ void RenderInterface_DX12::Destroy_CommandAllocators() noexcept
 		RMLUI_ASSERTMSG(p_allocator, "early calling or object is damaged!");
 		if (p_allocator)
 		{
-			auto ref_count = p_allocator->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = p_allocator->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		}
 	}
@@ -4870,7 +4877,7 @@ void RenderInterface_DX12::Destroy_Allocator() noexcept
 	RMLUI_ZoneScopedN("DirectX 12 - Destroy_Allocator");
 	if (m_p_allocator)
 	{
-		auto ref_count = m_p_allocator->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_allocator->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 	}
 }
@@ -4881,7 +4888,7 @@ void RenderInterface_DX12::Destroy_SyncPrimitives_Screenshot() noexcept
 
 	if (m_p_fence_screenshot)
 	{
-		auto ref_count = m_p_fence_screenshot->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_fence_screenshot->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 
 		m_p_fence_screenshot = nullptr;
@@ -5036,7 +5043,7 @@ void RenderInterface_DX12::Destroy_Resource_DepthStencil()
 			m_p_depthstencil_resource->GetResource()->Release();
 		}
 
-		auto count = m_p_depthstencil_resource->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto count = m_p_depthstencil_resource->Release();
 		RMLUI_ASSERTMSG(count == 0, "leak!");
 
 		m_p_depthstencil_resource = nullptr;
@@ -7636,7 +7643,7 @@ void RenderInterface_DX12::Destroy_Resource_Pipelines()
 	{
 		if (m_pipelines[i])
 		{
-			auto ref_count = m_pipelines[i]->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_pipelines[i]->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak");
 			m_pipelines[i] = nullptr;
 		}
@@ -8064,7 +8071,7 @@ void RenderInterface_DX12::BufferMemoryManager::Shutdown()
 				p_allocation->GetResource()->Release();
 			}
 
-			auto ref_count = p_allocation->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = p_allocation->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak!");
 		}
 	}
@@ -8073,7 +8080,7 @@ void RenderInterface_DX12::BufferMemoryManager::Shutdown()
 	{
 		if (p_block)
 		{
-			auto ref_count = p_block->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = p_block->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak! (virtual block)");
 		}
 	}
@@ -8219,7 +8226,7 @@ RenderInterface_DX12::GraphicsAllocationInfo RenderInterface_DX12::BufferMemoryM
 #endif
 
 			auto* p_dx_allocation = m_buffers.at(result_index).first;
-			auto* p_dx_resource = p_dx_allocation->GetResource();
+			RMLUI_ATTR_ASSERT_VARIABLE auto* p_dx_resource = p_dx_allocation->GetResource();
 
 			RMLUI_ASSERTMSG(p_dx_allocation, "something is broken!");
 			RMLUI_ASSERTMSG(p_dx_resource, "something is broken!");
@@ -8809,7 +8816,7 @@ void RenderInterface_DX12::TextureMemoryManager::Shutdown()
 	for (auto* p_heap : m_heaps_placed)
 	{
 		p_heap->Release();
-		auto ref_count = m_blocks.at(index)->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_blocks.at(index)->Release();
 
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 		++index;
@@ -8817,13 +8824,13 @@ void RenderInterface_DX12::TextureMemoryManager::Shutdown()
 
 	if (m_p_virtual_block_for_render_target_heap_allocations)
 	{
-		auto ref_count = m_p_virtual_block_for_render_target_heap_allocations->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_virtual_block_for_render_target_heap_allocations->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 	}
 
 	if (m_p_virtual_block_for_depth_stencil_heap_allocations)
 	{
-		auto ref_count = m_p_virtual_block_for_depth_stencil_heap_allocations->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_virtual_block_for_depth_stencil_heap_allocations->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak");
 	}
 
@@ -8843,7 +8850,7 @@ void RenderInterface_DX12::TextureMemoryManager::Shutdown()
 			m_p_upload_buffer->GetResource()->Release();
 		}
 
-		auto ref_count = m_p_upload_buffer->Release();
+		RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = m_p_upload_buffer->Release();
 		RMLUI_ASSERTMSG(ref_count == 0, "leak!");
 	}
 #endif
@@ -9187,8 +9194,8 @@ D3D12MA::VirtualBlock* RenderInterface_DX12::TextureMemoryManager::Get_Available
 	return p_result;
 }
 
-void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(size_t base_memory, size_t total_memory, D3D12_RESOURCE_DESC& desc,
-	TextureHandleType* p_impl, const Rml::byte* p_data)
+void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(RMLUI_ATTR_ASSERT_VARIABLE size_t base_memory,
+	RMLUI_ATTR_ASSERT_VARIABLE size_t total_memory, D3D12_RESOURCE_DESC& desc, TextureHandleType* p_impl, const Rml::byte* p_data)
 {
 	RMLUI_ZoneScopedN("DirectX 12 - TextureMemoryManager::Alloc_As_Committed");
 	RMLUI_ASSERTMSG(base_memory > 0, "must be greater than zero!");
@@ -9234,8 +9241,9 @@ void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(size_t base_
 	}
 }
 
-void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(size_t base_memory, size_t total_memory, D3D12_RESOURCE_DESC& desc,
-	D3D12_RESOURCE_STATES initial_state, TextureHandleType* p_texture, Gfx::FramebufferData* p_impl)
+void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(RMLUI_ATTR_ASSERT_VARIABLE size_t base_memory,
+	RMLUI_ATTR_ASSERT_VARIABLE size_t total_memory, D3D12_RESOURCE_DESC& desc, D3D12_RESOURCE_STATES initial_state, TextureHandleType* p_texture,
+	Gfx::FramebufferData* p_impl)
 {
 	RMLUI_ZoneScopedN("DirectX 12 - TextureMemoryManager::Alloc_As_Committed");
 	RMLUI_ASSERTMSG(base_memory > 0, "must be greater than zero!");
@@ -9325,8 +9333,8 @@ void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Committed(size_t base_
 	}
 }
 
-void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Placed(size_t base_memory, size_t total_memory, D3D12_RESOURCE_DESC& desc,
-	TextureHandleType* p_impl, const Rml::byte* p_data)
+void RenderInterface_DX12::TextureMemoryManager::Alloc_As_Placed(size_t base_memory, RMLUI_ATTR_ASSERT_VARIABLE size_t total_memory,
+	D3D12_RESOURCE_DESC& desc, TextureHandleType* p_impl, const Rml::byte* p_data)
 {
 	RMLUI_ZoneScopedN("DirectX 12 - TextureMemoryManager::Alloc_As_Placed");
 	RMLUI_ASSERTMSG(base_memory > 0, "must be greater than zero!");
@@ -9673,7 +9681,7 @@ void RenderInterface_DX12::TextureMemoryManager::Upload(bool is_committed, Textu
 				p_allocation->GetResource()->Release();
 			}
 
-			auto ref_count = p_allocation->Release();
+			RMLUI_ATTR_ASSERT_VARIABLE auto ref_count = p_allocation->Release();
 			RMLUI_ASSERTMSG(ref_count == 0, "leak!");
 		}
 	}
