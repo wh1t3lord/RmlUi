@@ -122,7 +122,7 @@ jobs:
     runs-on: windows-latest
 
     env:
-      BUILD_TYPE: Release
+      BUILD_TYPE: ${{ matrix.build_type || 'Release' }}
       VCPKG_DEFAULT_TRIPLET: x64-windows
 
     strategy:
@@ -132,6 +132,9 @@ jobs:
           - cmake_options: -DRMLUI_BACKEND=auto -DRMLUI_PRECOMPILED_HEADERS=OFF
           - cmake_options: -DRMLUI_BACKEND=Win32_VK -DRMLUI_VK_DEBUG=ON
           - cmake_options: -DRMLUI_BACKEND=SDL_VK -DRMLUI_LUA_BINDINGS_LIBRARY=luajit
+          - cmake_options: -DRMLUI_BACKEND=Win32_DX12
+          - cmake_options: -DRMLUI_BACKEND=GLFW_DX12
+            build_type: Debug
 
     steps:
     - uses: actions/checkout@v4
