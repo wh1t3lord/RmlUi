@@ -24,12 +24,12 @@ static void LogErrorFromGLFW(int error, const char* description)
     Lifetime governed by the calls to Backend::Initialize() and Backend::Shutdown().
  */
 struct BackendData {
-	BackendData(GLFWwindow* window) : system_interface(window) {}
+	BackendData(GLFWwindow* window) : system_interface(window), window(window) {}
 
 	SystemInterface_GLFW system_interface;
 	Rml::UniquePtr<RenderInterface_DX12> render_interface;
 
-	GLFWwindow* window = nullptr;
+	GLFWwindow* window;
 	Rml::Context* context = nullptr;
 	KeyDownCallback key_down_callback = nullptr;
 
@@ -71,7 +71,6 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 	}
 
 	data = Rml::MakeUnique<BackendData>(window);
-	data->window = window;
 
 	RmlRendererSettings settings = {};
 	settings.vsync = true;

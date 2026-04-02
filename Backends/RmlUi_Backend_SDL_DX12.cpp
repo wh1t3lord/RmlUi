@@ -95,10 +95,12 @@ public:
     Lifetime governed by the calls to Backend::Initialize() and Backend::Shutdown().
  */
 struct BackendData {
+	BackendData(SDL_Window* window) : system_interface(window), window(window) {}
+
 	SystemInterface_SDL system_interface;
 	Rml::UniquePtr<RenderInterface_DX12_SDL> render_interface;
 
-	SDL_Window* window = nullptr;
+	SDL_Window* window;
 
 	bool running = true;
 };
@@ -181,7 +183,7 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 	SDL_GetWindowSize(window, &width, &height);
 #endif
 
-	data = Rml::MakeUnique<BackendData>();
+	data = Rml::MakeUnique<BackendData>(window);
 
 	RmlRendererSettings settings = {};
 	settings.vsync = true;
@@ -198,9 +200,6 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 		return false;
 	}
 
-	data->window = window;
-
-	data->system_interface.SetWindow(window);
 	data->render_interface->SetViewport(width, height);
 
 	return true;
