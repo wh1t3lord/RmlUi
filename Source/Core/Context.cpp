@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/ContextInstancer.h"
@@ -58,6 +30,7 @@ static constexpr float UNIT_SCROLL_LENGTH = 80.f;   // [dp]
 // If the user stops scrolling for this amount of time in seconds before touch/click release, don't apply inertia.
 static constexpr float SCROLL_INERTIA_DELAY = 0.1f;
 static constexpr float TOUCH_MOVEMENT_DECAY_RATE = 5.0f;
+static constexpr float TOUCH_CLICK_MAX_DISTANCE = DOUBLE_CLICK_MAX_DIST; // [dp]
 
 static void DebugVerifyLocaleSetting()
 {
@@ -769,12 +742,7 @@ bool Context::ProcessMouseButtonUp(int button_index, int key_modifier_state)
 			active->DispatchEvent(EventId::Click, parameters);
 		}
 
-		// Unset the 'active' pseudo-class on all the elements in the active chain; because they may not necessarily
-		// have had 'onmouseup' called on them, we can't guarantee this has happened already.
-		for (Element* element : active_chain)
-			element->SetPseudoClass("active", false);
-		active_chain.clear();
-		active = nullptr;
+		ResetActiveChain();
 
 		if (drag)
 		{
@@ -919,7 +887,7 @@ bool Context::ProcessTouchCancel(const TouchList& touches)
 
 bool Context::ProcessTouchStart(const Touch& touch, int key_modifier_state)
 {
-	TouchState * state = LookupTouch(touch.identifier);
+	TouchState* state = LookupTouch(touch.identifier);
 	RMLUI_ASSERTMSG(state == nullptr, "Receiving touch start event for an already started touch.");
 	if (!state)
 	{
@@ -927,8 +895,11 @@ bool Context::ProcessTouchStart(const Touch& touch, int key_modifier_state)
 		state = &it_inserted->second;
 	}
 
-	state->start_position = state->last_position = touch.position;
-	state->scrolling_start_time_x = state->scrolling_start_time_y = 0;
+	state->start_position = touch.position;
+	state->inertia_position = touch.position;
+	state->last_position = touch.position;
+	state->scrolling_start_time_x = 0;
+	state->scrolling_start_time_y = 0;
 	state->scrolling_last_time = GetSystemInterface()->GetElapsedTime();
 
 	Element* touch_element = GetElementAtPoint(touch.position);
@@ -954,61 +925,56 @@ bool Context::ProcessTouchMove(const Touch& touch, int key_modifier_state)
 
 	if (state->scroll_container)
 	{
+		const Vector2f delta = touch.position - state->last_position;
+
 		if (drag)
 		{
 			// Don't scroll and reset scrolling state when dragging any element (scrollbars and others)
-			state->start_position = state->last_position = touch.position;
-			state->scrolling_start_time_x = state->scrolling_start_time_y = 0;
+			state->inertia_position = touch.position;
+			state->last_position = touch.position;
+			state->scrolling_start_time_x = 0;
+			state->scrolling_start_time_y = 0;
 		}
-		else
+		else if (delta.x != 0 || delta.y != 0)
 		{
-			Vector2f delta = touch.position - state->last_position;
-			if (delta.x != 0 || delta.y != 0)
-			{
-				// use instant scrolling when touch is pressed even when default scroll behavior is smooth
-				scroll_controller->InstantScrollOnTarget(state->scroll_container, -delta);
+			// Use instant scrolling when touch is pressed even when default scroll behavior is smooth.
+			scroll_controller->InstantScrollOnTarget(state->scroll_container, -delta);
 
-				double current_time = GetSystemInterface()->GetElapsedTime();
+			const double current_time = GetSystemInterface()->GetElapsedTime();
+
+			enum { Horizontal = 0, Vertical = 1 };
+			for (int axis : {Horizontal, Vertical})
+			{
+				bool& state_scrolling_positive = (axis == Horizontal ? state->scrolling_right : state->scrolling_down);
+				double& state_scrolling_start_time = (axis == Horizontal ? state->scrolling_start_time_x : state->scrolling_start_time_y);
+
+				// Time set to 0 means no touch move events happened before and direction is unclear.
+				const bool scroll_start = (state_scrolling_start_time == 0);
 
 				// If the user changes direction, reset the start time and position.
-				bool going_right = (delta.x > 0);
-				if (delta.x != 0 && (going_right != state->scrolling_right ||
-						state->scrolling_start_time_x == 0)) // time set to 0 means no touch move events happened before and direction is unclear
+				const bool going_positive = (delta[axis] > 0);
+				if (delta[axis] != 0 && (going_positive != state_scrolling_positive || scroll_start))
 				{
-					state->start_position.x = touch.position.x;
-					state->scrolling_right = going_right;
-					state->scrolling_start_time_x = state->scrolling_last_time;
+					state->inertia_position[axis] = touch.position[axis];
+					state_scrolling_positive = going_positive;
+					state_scrolling_start_time = state->scrolling_last_time;
 				}
 				else
 				{
-					// move starting position towards end position with a weight of e^-kt to better capture 
-					// and calculate velocity of the very last touch movements before touch release
-					float elapsed_time_x = static_cast<float>(current_time - state->scrolling_start_time_x);
-					float weight = Math::Exp(-elapsed_time_x * TOUCH_MOVEMENT_DECAY_RATE);
+					// Move inertia position towards end position with a weight of e^-kt to better capture and
+					// calculate velocity of the very last touch movements before touch release.
+					const float elapsed_time = static_cast<float>(current_time - state_scrolling_start_time);
+					const float weight = Math::Exp(-elapsed_time * TOUCH_MOVEMENT_DECAY_RATE);
 
-					state->start_position.x = touch.position.x - (touch.position.x - state->start_position.x) * weight;
-					state->scrolling_start_time_x = current_time - (current_time - state->scrolling_start_time_x) * weight;
+					state->inertia_position[axis] = touch.position[axis] - (touch.position[axis] - state->inertia_position[axis]) * weight;
+					state_scrolling_start_time = current_time - (current_time - state_scrolling_start_time) * weight;
 				}
-
-				bool going_down = (delta.y > 0);
-				if (delta.y != 0 && (going_down != state->scrolling_down ||
-						state->scrolling_start_time_y == 0)) // time set to 0 means no touch move events happened before and direction is unclear
-				{
-					state->start_position.y = touch.position.y;
-					state->scrolling_down = going_down;
-					state->scrolling_start_time_y = state->scrolling_last_time;
-				}
-				else
-				{
-					// move starting position towards end position with a weight of e^-kt to better capture
-					// and calculate velocity of the very last touch movements before touch release
-					float elapsed_time_y = static_cast<float>(current_time - state->scrolling_start_time_y);
-					float weight = Math::Exp(-elapsed_time_y * TOUCH_MOVEMENT_DECAY_RATE);
-
-					state->start_position.y = touch.position.y - (touch.position.y - state->start_position.y) * weight;
-					state->scrolling_start_time_y = current_time - (current_time - state->scrolling_start_time_y) * weight;
-				}	
 			}
+
+			const float touch_max_distance = TOUCH_CLICK_MAX_DISTANCE * density_independent_pixel_ratio;
+			const Vector2f delta_from_start = touch.position - state->start_position;
+			if (delta_from_start.SquaredMagnitude() >= touch_max_distance * touch_max_distance)
+				ResetActiveChain();
 		}
 	}
 
@@ -1030,19 +996,17 @@ bool Context::ProcessTouchEnd(const Touch& touch, int key_modifier_state)
 		if (time_since_last_move < SCROLL_INERTIA_DELAY)
 		{
 			// apply scrolling inertia
-			Vector2f delta = touch.position - state->start_position;
+			Vector2f delta = touch.position - state->inertia_position;
 
-			Vector2f velocity(-delta);
-
+			Vector2f velocity = -delta;
 			float elapsed_time_x = static_cast<float>(current_time - state->scrolling_start_time_x);
 			float elapsed_time_y = static_cast<float>(current_time - state->scrolling_start_time_y);
-
 			if (elapsed_time_x > 0)
 				velocity.x /= elapsed_time_x;
 			if (elapsed_time_y > 0)
 				velocity.y /= elapsed_time_y;
 
-			scroll_controller->ApplyScrollInertia(state->scroll_container, velocity);
+			scroll_controller->ActivateInertia(state->scroll_container, velocity);
 		}
 	}
 
@@ -1111,6 +1075,15 @@ DataModelConstructor Context::GetDataModel(const String& name)
 
 	Log::Message(Log::LT_ERROR, "Data model name '%s' could not be found.", name.c_str());
 	return DataModelConstructor();
+}
+
+UnorderedMap<String, DataModelConstructor> Context::GetDataModels() const
+{
+	UnorderedMap<String, DataModelConstructor> result;
+	result.reserve(data_models.size());
+	for (const auto& pair : data_models)
+		result.emplace(pair.first, DataModelConstructor(pair.second.get()));
+	return result;
 }
 
 bool Context::RemoveDataModel(const String& name)
@@ -1383,6 +1356,17 @@ void Context::UpdateHoverChain(Vector2i old_mouse_position, int key_modifier_sta
 
 	// Swap the new chain in.
 	hover_chain.swap(new_hover_chain);
+}
+
+void Context::ResetActiveChain()
+{
+	// Unset the 'active' pseudo-class on all the elements in the active chain; because they may not necessarily
+	// have had 'onmouseup' called on them, we can't guarantee this has happened already.
+	for (Element* element : active_chain)
+		element->SetPseudoClass("active", false);
+
+	active_chain.clear();
+	active = nullptr;
 }
 
 Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_element, Element* element) const

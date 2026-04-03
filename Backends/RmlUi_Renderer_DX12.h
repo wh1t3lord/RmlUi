@@ -1,30 +1,4 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2025 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
+#pragma once
 
 #ifndef RMLUI_BACKENDS_RENDERER_DX12_H
 #define RMLUI_BACKENDS_RENDERER_DX12_H
@@ -36,7 +10,7 @@
  */
 
 #ifndef RMLUI_PLATFORM_WIN32
-	#error unable to compile platform specific renderer required Windows OS that support DirectX-12
+	#error "DirectX 12 renderer only supported on Windows"
 #endif
 
 // clang-format off
@@ -70,82 +44,47 @@ struct RmlRendererSettings;
  */
 
 class RenderInterface_DX12 : public Rml::RenderInterface {
-public:
-#ifdef RMLUI_DX_DEBUG
-	// only for your mouse course to see how it is in MBs, just move cursor to variable on left side from = and you see the value of MBs
+private:
+	static constexpr uint32_t InvalidConstantBuffer_RootParameterIndex = std::numeric_limits<uint32_t>::max();
+	static constexpr uint8_t MaxConstantBuffersPerShader = 3;
+	static constexpr size_t NumPrograms = 23;
 
 	static constexpr size_t kDebugMB_BA = (RMLUI_RENDER_BACKEND_FIELD_VIDEOMEMORY_FOR_BUFFER_ALLOCATION / 1024) / 1024;
 	static constexpr size_t kDebugMB_TA = (RMLUI_RENDER_BACKEND_FIELD_VIDEOMEMORY_FOR_TEXTURE_ALLOCATION / 1024) / 1024;
 #endif
 
 public:
-	class GraphicsAllocationInfo {
-	public:
-		GraphicsAllocationInfo();
-		~GraphicsAllocationInfo();
-
-		const D3D12MA::VirtualAllocation& Get_VirtualAllocation(void) const noexcept;
-		void Set_VirtualAllocation(const D3D12MA::VirtualAllocation& info_alloc) noexcept;
-
-		size_t Get_Offset(void) const noexcept;
-		void Set_Offset(size_t value) noexcept;
-
-		size_t Get_Size(void) const noexcept;
-		void Set_Size(size_t value) noexcept;
-
-		int Get_BufferIndex(void) const noexcept;
-		void Set_BufferIndex(int index) noexcept;
-
-	private:
-		int m_buffer_index;
-		size_t m_offset;
-		size_t m_size;
-		D3D12MA::VirtualAllocation m_alloc_info;
+	struct GraphicsAllocationInfo {
+		int buffer_index = -1;
+		size_t offset = {};
+		size_t size = {};
+		D3D12MA::VirtualAllocation alloc_info = {};
 	};
 
-	class TextureHandleType {
+	class TextureHandleType : Rml::NonCopyMoveable {
 	public:
-		TextureHandleType() :
-#ifdef RMLUI_DX_DEBUG
-			m_is_destroyed{},
-#endif
-			m_p_resource{}
-		{}
+		TextureHandleType() = default;
 		~TextureHandleType()
 		{
 #ifdef RMLUI_DX_DEBUG
-			RMLUI_ASSERT(this->m_is_destroyed && "you forgot to destroy the resource!");
+			RMLUI_ASSERTMSG(m_is_destroyed, "The texture was not destroyed");
 #endif
 		}
 
-		const GraphicsAllocationInfo& Get_Info() const noexcept { return this->m_info; }
+		const GraphicsAllocationInfo& Get_Info() const noexcept { return m_info; }
+		void Set_Info(const GraphicsAllocationInfo& info) { m_info = info; }
+		void Set_Resource(void* p_resource) { m_p_resource = p_resource; }
+		void* Get_Resource() const noexcept { return m_p_resource; }
 
-		void Set_Info(const GraphicsAllocationInfo& info) { this->m_info = info; }
-
-		void Set_Resource(void* p_resource) { this->m_p_resource = p_resource; }
-
-		void* Get_Resource() const noexcept { return this->m_p_resource; }
-
+#ifdef RMLUI_DX_DEBUG
 		/// @brief returns debug resource name. Implementation of this method exists only when DEBUG is enabled for this project
 		/// @param  void, nothing
 		/// @return debug resource name when the source string is passed in LoadTexture method
-		const Rml::String& Get_ResourceName(void) const
-		{
-#ifdef RMLUI_DX_DEBUG
-			return this->m_debug_resource_name;
-#else
-			return Rml::String();
-#endif
-		}
+		const Rml::String& Get_ResourceName() const { return m_debug_resource_name; }
 
 		/// @brief sets m_debug_resource_name field with specified argument as resource_name
 		/// @param resource_name this string is getting from LoadTexture method from source argument
-		void Set_ResourceName(const Rml::String& resource_name)
-		{
-#ifdef RMLUI_DX_DEBUG
-			this->m_debug_resource_name = resource_name;
-#else
-			resource_name;
+		void Set_ResourceName(const Rml::String& resource_name) { m_debug_resource_name = resource_name; }
 #endif
 		}
 
@@ -153,45 +92,40 @@ public:
 		void Destroy()
 		{
 #ifdef RMLUI_DX_DEBUG
-			if (!this->m_is_destroyed)
-			{
+			RMLUI_ASSERTMSG(!m_is_destroyed, "The texture has already been destroyed");
+			m_is_destroyed = true;
 #endif
-				if (this->m_p_resource)
-				{
-					if (this->m_info.Get_BufferIndex() != -1)
-					{
-						ID3D12Resource* p_placed_resource = static_cast<ID3D12Resource*>(this->m_p_resource);
 
-						p_placed_resource->Release();
-					}
-					else
-					{
-						D3D12MA::Allocation* p_committed_resource = static_cast<D3D12MA::Allocation*>(this->m_p_resource);
+			if (m_p_resource)
+			{
+				if (m_info.buffer_index != -1)
+				{
+					static_cast<ID3D12Resource*>(m_p_resource)->Release();
+				}
+				else
+				{
+					D3D12MA::Allocation* p_committed_resource = static_cast<D3D12MA::Allocation*>(m_p_resource);
+					if (auto* underlying_resource = p_committed_resource->GetResource())
+						underlying_resource->Release();
 
 						if (p_committed_resource->GetResource())
 						{
 							p_committed_resource->GetResource()->Release();
 						}
 
-						p_committed_resource->Release();
-					}
-
-					this->m_info = GraphicsAllocationInfo();
-					this->m_p_resource = nullptr;
-#ifdef RMLUI_DX_DEBUG
-					this->m_is_destroyed = true;
-#endif
+					p_committed_resource->Release();
 				}
-#ifdef RMLUI_DX_DEBUG
+
+				m_info = GraphicsAllocationInfo();
+				m_p_resource = nullptr;
 			}
+#ifdef RMLUI_DX_DEBUG
+		}
 #endif
 		}
 
-		const OffsetAllocator::Allocation& Get_Allocation_DescriptorHeap(void) const noexcept { return this->m_allocation_descriptor_heap; }
-		void Set_Allocation_DescriptorHeap(const OffsetAllocator::Allocation& allocation) noexcept
-		{
-			this->m_allocation_descriptor_heap = allocation;
-		}
+		const OffsetAllocator::Allocation& Get_Allocation_DescriptorHeap() const noexcept { return m_allocation_descriptor_heap; }
+		void Set_Allocation_DescriptorHeap(const OffsetAllocator::Allocation& allocation) noexcept { m_allocation_descriptor_heap = allocation; }
 
 	private:
 #ifdef RMLUI_DX_DEBUG
@@ -200,147 +134,129 @@ public:
 
 		GraphicsAllocationInfo m_info;
 		OffsetAllocator::Allocation m_allocation_descriptor_heap;
-		void* m_p_resource; // placed or committed (CreateResource from D3D12MA)
+		void* m_p_resource = nullptr; // placed or committed (CreateResource from D3D12MA)
+
 #ifdef RMLUI_DX_DEBUG
 		Rml::String m_debug_resource_name;
+		bool m_is_destroyed = false;
 #endif
 	};
 
-	class ConstantBufferType {
-	public:
-		ConstantBufferType();
-		~ConstantBufferType();
-
-		const GraphicsAllocationInfo& Get_AllocInfo(void) const noexcept;
-		void Set_AllocInfo(const GraphicsAllocationInfo& info) noexcept;
-
-		void* Get_GPU_StartMemoryForBindingData(void);
-
-		void Set_GPU_StartMemoryForBindingData(void* p_start_pointer);
-
-		bool Is_Free(void) const { return this->m_is_free; }
-
-	private:
-		bool m_is_free;
+	struct ConstantBufferType {
 		GraphicsAllocationInfo m_alloc_info;
-		void* m_p_gpu_start_memory_for_binding_data;
+		void* m_p_gpu_start_memory_for_binding_data = nullptr;
 	};
 
-	class GeometryHandleType {
+	class GeometryHandleType : Rml::NonCopyMoveable {
 	public:
-		GeometryHandleType(void) :
-			m_num_vertices{}, m_num_indecies{}, m_p_constant_buffer_override{}, m_one_element_vertex_size{}, m_one_element_index_size{},
-			m_constant_buffer_root_parameter_indicies{_kRenderBackend_InvalidConstantBuffer_RootParameterIndex,
-				_kRenderBackend_InvalidConstantBuffer_RootParameterIndex, _kRenderBackend_InvalidConstantBuffer_RootParameterIndex}
-		{}
+		GeometryHandleType() = default;
 
-		~GeometryHandleType(void) {}
+		void Set_InfoVertex(const GraphicsAllocationInfo& info) { m_info_vertex = info; }
+		const GraphicsAllocationInfo& Get_InfoVertex() const noexcept { return m_info_vertex; }
 
-		void Set_InfoVertex(const GraphicsAllocationInfo& info) { this->m_info_vertex = info; }
-		const GraphicsAllocationInfo& Get_InfoVertex(void) const noexcept { return this->m_info_vertex; }
+		void Set_InfoIndex(const GraphicsAllocationInfo& info) { m_info_index = info; }
+		const GraphicsAllocationInfo& Get_InfoIndex() const noexcept { return m_info_index; }
 
-		void Set_InfoIndex(const GraphicsAllocationInfo& info) { this->m_info_index = info; }
-		const GraphicsAllocationInfo& Get_InfoIndex(void) const noexcept { return this->m_info_index; }
+		void Set_NumVertices(int num) { m_num_vertices = num; }
+		int Get_NumVertices() const { return m_num_vertices; }
 
-		void Set_NumVertices(int num) { this->m_num_vertices = num; }
+		void Set_NumIndices(int num) { m_num_indices = num; }
+		int Get_NumIndices() const { return m_num_indices; }
 
-		int Get_NumVertices(void) const { return this->m_num_vertices; }
+		void Set_SizeOfOneVertex(size_t size) { m_one_element_vertex_size = size; }
+		size_t Get_SizeOfOneVertex() const { return m_one_element_vertex_size; }
 
-		void Set_NumIndecies(int num) { this->m_num_indecies = num; }
+		void Set_SizeOfOneIndex(size_t size) { m_one_element_index_size = size; }
+		size_t Get_SizeOfOneIndex() const { return m_one_element_index_size; }
 
-		int Get_NumIndecies(void) const { return this->m_num_indecies; }
+		const OffsetAllocator::Allocation& Get_Allocation_DescriptorHeap() const noexcept { return m_allocation_descriptor_heap; }
+		void Set_Allocation_DescriptorHeap(const OffsetAllocator::Allocation& allocation) noexcept { m_allocation_descriptor_heap = allocation; }
 
-		void Set_SizeOfOneVertex(size_t size) { this->m_one_element_vertex_size = size; }
-
-		size_t Get_SizeOfOneVertex(void) const { return this->m_one_element_vertex_size; }
-
-		void Set_SizeOfOneIndex(size_t size) { this->m_one_element_index_size = size; }
-
-		size_t Get_SizeOfOneIndex(void) const { return this->m_one_element_index_size; }
-
-		const OffsetAllocator::Allocation& Get_Allocation_DescriptorHeap(void) const noexcept { return this->m_allocation_descriptor_heap; }
-		void Set_Allocation_DescriptorHeap(const OffsetAllocator::Allocation& allocation) noexcept
-		{
-			this->m_allocation_descriptor_heap = allocation;
-		}
+		int Get_HistoryBackBufferFrameIndex(void) const { return m_history_backbuffer_frame_index; }
+		void Set_HistoryBackBufferFrameIndex(int frame_index) { m_history_backbuffer_frame_index = frame_index; }
 
 		void Set_ConstantBuffer(ConstantBufferType* p_constant_buffer)
 		{
-			RMLUI_ASSERT(p_constant_buffer && "must be valid constant buffer!");
-			this->m_p_constant_buffer_override = p_constant_buffer;
+			RMLUI_ASSERTMSG(p_constant_buffer, "must be valid constant buffer!");
+			m_p_constant_buffer_override = p_constant_buffer;
 		}
 
-		void Reset_ConstantBuffer(void)
+		void Reset_ConstantBuffer()
 		{
-			this->m_p_constant_buffer_override = nullptr;
-			for (uint8_t i = 0; i < _kRenderBackend_MaxConstantBuffersPerShader; ++i)
+			m_p_constant_buffer_override = nullptr;
+			for (uint8_t i = 0; i < MaxConstantBuffersPerShader; ++i)
 			{
-				this->m_constant_buffer_root_parameter_indicies[i] = _kRenderBackend_InvalidConstantBuffer_RootParameterIndex;
+				m_constant_buffer_root_parameter_indices[i] = InvalidConstantBuffer_RootParameterIndex;
 			}
 		}
 
-		ConstantBufferType* Get_ConstantBuffer(void) const { return this->m_p_constant_buffer_override; }
+		ConstantBufferType* Get_ConstantBuffer() const { return m_p_constant_buffer_override; }
 
 		// use this only for shared CBV that will be used among all shaders otherwise we need to provide a new array that will hold a GPU addresses to
-		// different cbv and their indicies but for now it is only for ONE CBV that can be used among vertex and pixel shaders
-		void Add_ConstantBufferRootParameterIndicies(uint32_t index)
+		// different cbv and their indices but for now it is only for ONE CBV that can be used among vertex and pixel shaders
+		void Add_ConstantBufferRootParameterIndices(uint32_t index)
 		{
-#ifdef RMLUI_DEBUG
+#ifdef RMLUI_DX_DEBUG
 			bool found_empty_slot = false;
 #endif
 
-			for (unsigned char i = 0; i < _kRenderBackend_MaxConstantBuffersPerShader; ++i)
+			for (unsigned char i = 0; i < MaxConstantBuffersPerShader; ++i)
 			{
-				if (m_constant_buffer_root_parameter_indicies[i] == _kRenderBackend_InvalidConstantBuffer_RootParameterIndex)
+				if (m_constant_buffer_root_parameter_indices[i] == InvalidConstantBuffer_RootParameterIndex)
 				{
-#ifdef RMLUI_DEBUG
+#ifdef RMLUI_DX_DEBUG
 					found_empty_slot = true;
 #endif
 
-					m_constant_buffer_root_parameter_indicies[i] = index;
+					m_constant_buffer_root_parameter_indices[i] = index;
 
 					break;
 				}
 			}
 
-#ifdef RMLUI_DEBUG
-			RMLUI_ASSERT(found_empty_slot &&
+#ifdef RMLUI_DX_DEBUG
+			RMLUI_ASSERTMSG(found_empty_slot,
 				"failed to obtain empty slot in such case you have to set another limits for engine using "
-				"_kRenderBackend_MaxConstantBuffersPerShader field");
+				"MaxConstantBuffersPerShader field");
 #endif
 		}
 
-		const uint32_t* Get_ConstantBufferRootParameterIndicies(uint8_t& amount_of_indicies) const
+		const uint32_t* Get_ConstantBufferRootParameterIndices(uint8_t& amount_of_indices) const
 		{
-			amount_of_indicies = 0;
+			amount_of_indices = 0;
 
 			// might be slow for big arrays otherwise provide a cache field for this class just like field that will show current size of
-			// m_constant_buffer_root_parameter_indicies member in terms of current entries that are filled the array for now just to reduce the
+			// m_constant_buffer_root_parameter_indices member in terms of current entries that are filled the array for now just to reduce the
 			// memory footprint for this class and I don't use this cache field as size so we determine in runtime
-			for (uint8_t i = 0; i < _kRenderBackend_MaxConstantBuffersPerShader; ++i)
+			for (uint8_t i = 0; i < MaxConstantBuffersPerShader; ++i)
 			{
-				if (this->m_constant_buffer_root_parameter_indicies[i] != _kRenderBackend_InvalidConstantBuffer_RootParameterIndex)
+				if (m_constant_buffer_root_parameter_indices[i] != InvalidConstantBuffer_RootParameterIndex)
 				{
-					amount_of_indicies = i + 1;
+					amount_of_indices = i + 1;
 				}
 			}
 
-			return this->m_constant_buffer_root_parameter_indicies;
+			return m_constant_buffer_root_parameter_indices;
 		}
 
 	private:
-		int m_num_vertices;
-		int m_num_indecies;
-		ConstantBufferType* m_p_constant_buffer_override;
-		size_t m_one_element_vertex_size;
-		size_t m_one_element_index_size;
-		uint32_t m_constant_buffer_root_parameter_indicies[_kRenderBackend_MaxConstantBuffersPerShader];
+		int m_num_vertices = {};
+		int m_num_indices = {};
+		int m_history_backbuffer_frame_index = -1;
+		ConstantBufferType* m_p_constant_buffer_override = {};
+		size_t m_one_element_vertex_size = {};
+		size_t m_one_element_index_size = {};
+		uint32_t m_constant_buffer_root_parameter_indices[MaxConstantBuffersPerShader] = {
+			InvalidConstantBuffer_RootParameterIndex,
+			InvalidConstantBuffer_RootParameterIndex,
+			InvalidConstantBuffer_RootParameterIndex,
+		};
 		GraphicsAllocationInfo m_info_vertex;
 		GraphicsAllocationInfo m_info_index;
 		OffsetAllocator::Allocation m_allocation_descriptor_heap;
 	};
 
-	class BufferMemoryManager {
+	class BufferMemoryManager : Rml::NonCopyMoveable {
 	public:
 		BufferMemoryManager();
 		~BufferMemoryManager();
@@ -363,7 +279,7 @@ public:
 
 		D3D12MA::Allocation* Get_BufferByIndex(int buffer_index);
 
-		bool Is_Initialized(void) const;
+		bool Is_Initialized() const;
 
 	private:
 		void Alloc_Buffer(size_t size
@@ -373,9 +289,7 @@ public:
 #endif
 		);
 
-		/// @brief searches for block that has enough memory for requested allocation size otherwise returns nullptr that means no block!
-		/// @param size_for_allocation
-		/// @return
+		// Searches for block that has enough memory for requested allocation size, otherwise returns nullptr that means no block!
 		D3D12MA::VirtualBlock* Get_AvailableBlock(size_t size_for_allocation, int* p_result_buffer_index);
 
 		D3D12MA::VirtualBlock* Get_NotOutOfMemoryAndAvailableBlock(size_t size_for_allocation, int* p_result_buffer_index);
@@ -401,12 +315,12 @@ public:
 		Rml::Vector<Rml::Pair<D3D12MA::Allocation*, void*>> m_buffers;
 	};
 
-	/*
-	 * the key feature of this manager is texture management and if texture size is less or equal to 1.0 MB
-	 * it will allocate heap for placing resources and if resource is less (or equal) to 1 MB then I will be written to that heap
-	 * Otherwise will be used heap per texture (committed resource)
+	/**
+	 * The key feature of this manager is texture management and if texture size is less or equal to 1.0 MB it will
+	 * allocate heap for placing resources and if resource is less (or equal) to 1 MB then it will be written to that
+	 * heap Otherwise will be used heap per texture (committed resource)
 	 */
-	class TextureMemoryManager {
+	class TextureMemoryManager : Rml::NonCopyMoveable {
 	public:
 		TextureMemoryManager();
 		~TextureMemoryManager();
@@ -415,9 +329,10 @@ public:
 		/// @param p_allocator from main manager
 		/// @param size_for_placed_heap by default it is 4Mb in bytes
 		void Initialize(D3D12MA::Allocator* p_allocator, OffsetAllocator::Allocator* p_offset_allocator_for_descriptor_heap_srv_cbv_uav,
-			ID3D12Device* p_device, ID3D12GraphicsCommandList* p_copy_command_list, ID3D12CommandAllocator* p_copy_allocator_command,
-			ID3D12DescriptorHeap* p_descriptor_heap_srv, ID3D12DescriptorHeap* p_descriptor_heap_rtv, ID3D12DescriptorHeap* p_descriptor_heap_dsv,
-			ID3D12CommandQueue* p_copy_queue, D3D12_CPU_DESCRIPTOR_HANDLE* p_handle, RenderInterface_DX12* p_renderer,
+			ID3D12Device* p_device, ID3D12GraphicsCommandList* p_copy_command_list, ID3D12GraphicsCommandList* p_backend_command_list,
+			ID3D12CommandAllocator* p_copy_allocator_command, ID3D12DescriptorHeap* p_descriptor_heap_srv,
+			ID3D12DescriptorHeap* p_descriptor_heap_rtv, ID3D12DescriptorHeap* p_descriptor_heap_dsv, ID3D12CommandQueue* p_copy_queue,
+			D3D12_CPU_DESCRIPTOR_HANDLE* p_handle, RenderInterface_DX12* p_renderer,
 			size_t size_for_placed_heap = RMLUI_RENDER_BACKEND_FIELD_VIDEOMEMORY_FOR_TEXTURE_ALLOCATION);
 		void Shutdown();
 
@@ -443,7 +358,7 @@ public:
 
 		void Free_Texture(TextureHandleType* p_allocated_texture_with_class, bool is_rt, D3D12MA::VirtualAllocation& allocation);
 
-		bool Is_Initialized(void) const;
+		bool Is_Initialized() const;
 
 	private:
 		bool CanAllocate(size_t total_memory_for_allocation, D3D12MA::VirtualBlock* p_block);
@@ -489,7 +404,9 @@ public:
 		D3D12MA::Allocator* m_p_allocator;
 		OffsetAllocator::Allocator* m_p_offset_allocator_for_descriptor_heap_srv_cbv_uav;
 		ID3D12Device* m_p_device;
-		ID3D12GraphicsCommandList* m_p_command_list;
+		ID3D12GraphicsCommandList* m_p_copy_command_list;
+		/// @brief command list from drawing
+		ID3D12GraphicsCommandList* m_p_backend_command_list;
 		ID3D12CommandAllocator* m_p_command_allocator;
 		ID3D12DescriptorHeap* m_p_descriptor_heap_srv;
 		ID3D12CommandQueue* m_p_copy_queue;
@@ -509,15 +426,15 @@ public:
 	};
 
 	/*
-Manages render targets, including the layer stack and postprocessing framebuffers.
+	    Manages render targets, including the layer stack and postprocessing framebuffers.
 
-Layers can be pushed and popped, creating new framebuffers as needed. Typically, geometry is rendered to the top
-layer. The layer framebuffers may have MSAA enabled.
+	    Layers can be pushed and popped, creating new framebuffers as needed. Typically, geometry is rendered to the top
+	    layer. The layer framebuffers may have MSAA enabled.
 
-Postprocessing framebuffers are separate from the layers, and are commonly used to apply texture-wide effects
-such as filters. They are used both as input and output during rendering, and do not use MSAA.
-*/
-	class RenderLayerStack {
+	    Postprocessing framebuffers are separate from the layers, and are commonly used to apply texture-wide effects
+	    such as filters. They are used both as input and output during rendering, and do not use MSAA.
+	*/
+	class RenderLayerStack : Rml::NonCopyMoveable {
 	public:
 		RenderLayerStack();
 		~RenderLayerStack();
@@ -562,18 +479,13 @@ such as filters. They are used both as input and output during rendering, and do
 		TextureMemoryManager* m_p_manager_texture;
 		BufferMemoryManager* m_p_manager_buffer;
 		ID3D12Device* m_p_device;
-		Gfx::FramebufferData* m_p_depth_stencil_for_layers;
+		Rml::UniquePtr<Gfx::FramebufferData> m_p_depth_stencil_for_layers;
 		Rml::Vector<Gfx::FramebufferData> m_fb_layers;
 		Rml::Vector<Gfx::FramebufferData> m_fb_postprocess;
 	};
 
 public:
-	// RenderInterface_DX12(ID3D12Device* p_user_device, ID3D12CommandQueue* p_user_command_queue,
-	//	ID3D12GraphicsCommandList* p_user_graphics_command_list);
-
-	RenderInterface_DX12(ID3D12Device* p_user_device, ID3D12GraphicsCommandList* p_command_list, IDXGIAdapter* p_user_adapter,
-		bool is_execute_when_end_frame_issued, int initial_width, int initial_height, const Backend::RmlRendererSettings* settings);
-	RenderInterface_DX12(void* p_window_handle, const Backend::RmlRendererSettings* settings);
+	RenderInterface_DX12(void* p_window_handle, const Backend::RmlRendererSettings& settings);
 	~RenderInterface_DX12();
 
 	// using CreateSurfaceCallback = bool (*)(VkInstance instance, VkSurfaceKHR* out_surface);
@@ -638,53 +550,41 @@ public:
 	bool IsSwapchainValid() noexcept;
 	void RecreateSwapchain() noexcept;
 
-	ID3D12Fence* Get_Fence(void);
-	HANDLE Get_FenceEvent(void);
-	Rml::Array<uint64_t, RMLUI_RENDER_BACKEND_FIELD_SWAPCHAIN_BACKBUFFER_COUNT>& Get_FenceValues(void);
-	uint32_t Get_CurrentFrameIndex(void);
+	ID3D12Fence* Get_Fence();
+	HANDLE Get_FenceEvent();
+	Rml::Array<uint64_t, RMLUI_RENDER_BACKEND_FIELD_SWAPCHAIN_BACKBUFFER_COUNT>& Get_FenceValues();
+	uint32_t Get_CurrentFrameIndex();
 
-	ID3D12Device* Get_Device(void) const;
-	TextureMemoryManager& Get_TextureManager(void);
-	BufferMemoryManager& Get_BufferManager(void);
+	ID3D12Device* Get_Device() const;
+	TextureMemoryManager& Get_TextureManager();
+	BufferMemoryManager& Get_BufferManager();
 
-	unsigned char Get_MSAASampleCount(void) const;
+	unsigned char Get_MSAASampleCount() const;
 
 	void Set_UserFramebufferIndex(unsigned char framebuffer_index);
 	void Set_UserRenderTarget(void* rtv_where_we_render_to);
 	void Set_UserDepthStencil(void* dsv_where_we_render_to);
 
-	bool CaptureScreen(int& width, int& height, int& num_components, int& row_pitch, Rml::byte*& raw_pixels, size_t& pixels_count) override;
+	bool CaptureScreen(int& width, int& height, int& num_components, Rml::UniquePtr<Rml::byte[]>& data);
 
 private:
-	void BeginFrame_Shell();
-	void BeginFrame_Integration();
-
-	void EndFrame_Shell();
-	void EndFrame_Integration();
-
-	void Clear_Shell();
-	void Clear_Integration();
-
-	void SetViewport_Shell(int viewport_width, int viewport_height);
-	void SetViewport_Integration(int viewport_width, int viewport_height);
-
-	void Initialize_Device(void) noexcept;
-	void Initialize_Adapter(void) noexcept;
-	void Initialize_DebugLayer(void) noexcept;
+	void Initialize_Device() noexcept;
+	void Initialize_Adapter() noexcept;
+	void Initialize_DebugLayer() noexcept;
 
 	void Initialize_Swapchain(int width, int height) noexcept;
-	void Initialize_SyncPrimitives(void) noexcept;
-	void Initialize_SyncPrimitives_Screenshot(void) noexcept;
-	void Initialize_CommandAllocators(void);
+	void Initialize_SyncPrimitives() noexcept;
+	void Initialize_SyncPrimitives_Screenshot() noexcept;
+	void Initialize_CommandAllocators();
 
-	void Initialize_Allocator(void) noexcept;
+	void Initialize_Allocator() noexcept;
 
 	void Destroy_Swapchain() noexcept;
-	void Destroy_SyncPrimitives(void) noexcept;
-	void Destroy_CommandAllocators(void) noexcept;
-	void Destroy_CommandList(void) noexcept;
-	void Destroy_Allocator(void) noexcept;
-	void Destroy_SyncPrimitives_Screenshot(void) noexcept;
+	void Destroy_SyncPrimitives() noexcept;
+	void Destroy_CommandAllocators() noexcept;
+	void Destroy_CommandList() noexcept;
+	void Destroy_Allocator() noexcept;
+	void Destroy_SyncPrimitives_Screenshot() noexcept;
 
 	void Flush() noexcept;
 	uint64_t Signal(uint32_t frame_index) noexcept;
@@ -704,10 +604,7 @@ private:
 	void Create_Resource_RenderTargetViews();
 	void Destroy_Resource_RenderTagetViews();
 
-	// pipelines
-
-	void Create_Resource_For_Shaders(void);
-	void Destroy_Resource_For_Shaders(void);
+	void Destroy_Resource_For_Shaders();
 
 	void Create_Resource_Pipelines();
 	void Create_Resource_Pipeline_Color();
@@ -788,9 +685,9 @@ private:
 	bool m_is_command_list_user;
 	unsigned char m_msaa_sample_count;
 	unsigned char m_user_framebuffer_index;
-	/// @brief current viewport's width
+	// Current viewport's width
 	int m_width;
-	/// @brief current viewport's height
+	// Current viewport's height
 	int m_height;
 	int m_current_clip_operation;
 	ProgramId m_active_program_id;
@@ -799,7 +696,7 @@ private:
 	uint32_t m_size_descriptor_heap_shaders;
 	UINT m_current_back_buffer_index;
 	UINT m_stencil_ref_value;
-	/// @brief depends on compile build type if it is debug it means D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION otherwise it is 0
+	// For debug builds: D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, otherwise 0.
 	UINT m_default_shader_flags;
 	std::bitset<RMLUI_RENDER_BACKEND_FIELD_MAXNUMPROGRAMS> m_program_state_transform_dirty;
 	ID3D12Device* m_p_device;
@@ -820,8 +717,8 @@ private:
 	ID3D12Fence* m_p_fence_screenshot;
 	IDXGIAdapter* m_p_adapter;
 
-	ID3D12PipelineState* m_pipelines[23];
-	ID3D12RootSignature* m_root_signatures[23];
+	ID3D12PipelineState* m_pipelines[NumPrograms];
+	ID3D12RootSignature* m_root_signatures[NumPrograms];
 
 	ID3D12CommandAllocator* m_p_copy_allocator;
 	ID3D12GraphicsCommandList* m_p_copy_command_list;
@@ -865,21 +762,8 @@ private:
 
 // forward declaration
 namespace Backend {
-struct RmlRenderInitInfo;
-}
-
-namespace RmlDX12 {
-
-// If you pass a second argument and the second argument is valid you will initialize renderer partially, it means that it will be integrated into
-// your engine thus it WILL NOT create device, command queue and etc, but if you don't have own renderer system and you don't want to initialize
-// DirectX by your own you just don't need to pass anything (or nullptr) to second argument, so Rml will initialize renderer fully. Optionally, the
-// out message describes the loaded GL version or an error message on failure.
-RenderInterface_DX12* Initialize(Rml::String* out_message, Backend::RmlRenderInitInfo* p_info);
-
-/// @brief you need to destroy allocated object manually it just calls shutdown method!
-/// @param p_instance allocated instance from RmlDX12::Initialize method
-void Shutdown(RenderInterface_DX12* p_instance);
-
-} // namespace RmlDX12
-
-#endif
+struct RmlRendererSettings {
+	bool vsync;
+	unsigned char msaa_sample_count;
+};
+} // namespace Backend

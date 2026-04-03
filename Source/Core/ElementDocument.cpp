@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/ElementText.h"
@@ -53,26 +25,6 @@ enum class NavigationSearchDirection { Up, Down, Left, Right };
 namespace {
 	constexpr int Infinite = INT_MAX;
 
-	struct BoundingBox {
-		static const BoundingBox Invalid;
-
-		Vector2f min;
-		Vector2f max;
-
-		BoundingBox(const Vector2f& min, const Vector2f& max) : min(min), max(max) {}
-
-		BoundingBox Union(const BoundingBox& bounding_box) const
-		{
-			return BoundingBox(Math::Min(min, bounding_box.min), Math::Max(max, bounding_box.max));
-		}
-
-		bool Intersects(const BoundingBox& box) const { return min.x <= box.max.x && max.x >= box.min.x && min.y <= box.max.y && max.y >= box.min.y; }
-
-		bool IsValid() const { return min.x <= max.x && min.y <= max.y; }
-	};
-
-	const BoundingBox BoundingBox::Invalid = {Vector2f(FLT_MAX, FLT_MAX), Vector2f(-FLT_MAX, -FLT_MAX)};
-
 	enum class CanFocus { Yes, No, NoAndNoChildren };
 
 	CanFocus CanFocusElement(Element* element)
@@ -97,22 +49,22 @@ namespace {
 		return LayoutDetails::IsScrollContainer(computed.overflow_x(), computed.overflow_y());
 	}
 
-	int GetNavigationHeuristic(const BoundingBox& source, const BoundingBox& target, NavigationSearchDirection direction)
+	int GetNavigationHeuristic(const Rectanglef& source, const Rectanglef& target, NavigationSearchDirection direction)
 	{
 		enum Axis { Horizontal = 0, Vertical = 1 };
 
-		auto CalculateHeuristic = [](Axis axis, const BoundingBox& a, const BoundingBox& b) -> int {
+		auto CalculateHeuristic = [](Axis axis, const Rectanglef& a, const Rectanglef& b) -> int {
 			// The heuristic is mainly the distance from the source to the target along the specified direction. In
 			// addition, the following factor determines the penalty for being outside the projected area of the element in
 			// the given direction, as a multiplier of the cross-axis distance between the target and projected area.
 			static constexpr int CrossAxisFactor = 10'000;
 
-			const int main_axis = int(a.min[axis] - b.max[axis]);
+			const int main_axis = int(a.p0[axis] - b.p1[axis]);
 			if (main_axis < 0)
 				return Infinite;
 
 			const Axis cross = Axis((axis + 1) % 2);
-			const int cross_axis = Math::Max(0, int(b.min[cross] - a.max[cross])) + Math::Max(0, int(a.min[cross] - b.max[cross]));
+			const int cross_axis = Math::Max(0, int(b.p0[cross] - a.p1[cross])) + Math::Max(0, int(a.p0[cross] - b.p1[cross]));
 
 			return main_axis + CrossAxisFactor * cross_axis;
 		};
@@ -136,7 +88,7 @@ namespace {
 
 	// Search all descendents to determine which element minimizes the navigation heuristic.
 	void SearchNavigationTarget(SearchNavigationResult& best_result, Element* element, NavigationSearchDirection direction,
-		const BoundingBox& bounding_box, Element* exclude_element)
+		const Rectanglef& bounding_box, Element* exclude_element)
 	{
 		const int num_children = element->GetNumChildren();
 		for (int child_index = 0; child_index < num_children; child_index++)
@@ -149,7 +101,7 @@ namespace {
 			if (can_focus == CanFocus::Yes)
 			{
 				const Vector2f position = child->GetAbsoluteOffset(BoxArea::Border);
-				const BoundingBox target_box = {position, position + child->GetBox().GetSize(BoxArea::Border)};
+				const Rectanglef target_box = Rectanglef::FromPositionSize(position, child->GetBox().GetSize(BoxArea::Border));
 
 				const int heuristic = GetNavigationHeuristic(bounding_box, target_box, direction);
 				if (heuristic < best_result.heuristic)
@@ -185,7 +137,7 @@ ElementDocument::ElementDocument(const String& tag) : Element(tag)
 	SetProperty(PropertyId::Position, Property(Style::Position::Absolute));
 }
 
-ElementDocument::~ElementDocument() {}
+ElementDocument::~ElementDocument() = default;
 
 void ElementDocument::ProcessHeader(const DocumentHeader* document_header)
 {
@@ -374,7 +326,7 @@ void ElementDocument::PushToBack()
 		context->PushDocumentToBack(this);
 }
 
-void ElementDocument::Show(ModalFlag modal_flag, FocusFlag focus_flag)
+void ElementDocument::Show(ModalFlag modal_flag, FocusFlag focus_flag, ScrollFlag scroll_flag)
 {
 	switch (modal_flag)
 	{
@@ -439,7 +391,7 @@ void ElementDocument::Show(ModalFlag modal_flag, FocusFlag focus_flag)
 
 		// Focus the window or element
 		bool focused = focus_element->Focus(true);
-		if (focused && focus_element != this)
+		if (focused && focus_element != this && scroll_flag == ScrollFlag::Auto)
 			focus_element->ScrollIntoView(false);
 	}
 
@@ -848,7 +800,7 @@ Element* ElementDocument::FindNextNavigationElement(Element* current_element, Na
 	}
 
 	const Vector2f position = current_element->GetAbsoluteOffset(BoxArea::Border);
-	const BoundingBox bounding_box = {position, position + current_element->GetBox().GetSize(BoxArea::Border)};
+	const Rectanglef bounding_box = Rectanglef::FromPositionSize(position, current_element->GetBox().GetSize(BoxArea::Border));
 
 	auto GetNearestScrollContainer = [this](Element* element) -> Element* {
 		for (element = element->GetParentNode(); element; element = element->GetParentNode())

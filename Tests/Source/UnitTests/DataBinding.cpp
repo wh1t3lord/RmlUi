@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "../Common/TestsShell.h"
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/DataModelHandle.h>
@@ -787,6 +759,70 @@ TEST_CASE("data_binding.data_model_on_body")
 		element = element->GetNextSibling();
 	}
 	CHECK(i == array.size());
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("data_binding.data-value")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	static const String document_rml = R"(
+<rml>
+<head>
+	<title>Test</title>
+	<link type="text/template" href="/assets/window.rml"/>
+</head>
+<body template="window" data-model="text">
+<div id="div" data-value="parent">
+	<p id="p">{{ name }}</p>
+	<input id="input" type="text" data-value="name"/>
+</div>
+</body>
+</rml>
+)";
+
+	Rml::DataModelConstructor constructor = context->CreateDataModel("text");
+	REQUIRE(constructor);
+
+	Rml::String name = "name";
+	Rml::String parent = "parent";
+
+	constructor.Bind("name", &name);
+	constructor.Bind("parent", &parent);
+
+	DataModelHandle handle = constructor.GetModelHandle();
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+
+	TestsShell::RenderLoop();
+
+	Element* div = document->GetElementById("div");
+	Element* p = document->GetElementById("p");
+	Element* input = document->GetElementById("input");
+
+	REQUIRE(p->GetInnerRML() == "name");
+	REQUIRE(input->GetAttribute<String>("value", "") == "name");
+	REQUIRE(div->GetAttribute<String>("value", "") == "parent");
+
+	name = "ant";
+	handle.DirtyVariable("name");
+	TestsShell::RenderLoop();
+	REQUIRE(p->GetInnerRML() == "ant");
+	REQUIRE(input->GetAttribute<String>("value", "") == "ant");
+	REQUIRE(div->GetAttribute<String>("value", "") == "parent");
+
+	input->Focus();
+	context->ProcessTextInput("cheerful ");
+	TestsShell::RenderLoop();
+	REQUIRE(name == "cheerful ant");
+	REQUIRE(p->GetInnerRML() == "cheerful ant");
+	REQUIRE(input->GetAttribute<String>("value", "") == "cheerful ant");
+	REQUIRE(div->GetAttribute<String>("value", "") == "parent");
 
 	document->Close();
 	TestsShell::ShutdownShell();

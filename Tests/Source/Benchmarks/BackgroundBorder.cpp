@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "../Common/TestsShell.h"
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -37,7 +9,12 @@
 using namespace ankerl;
 using namespace Rml;
 
-static String document_rml = R"(
+TEST_CASE("background_border")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	static String document_rml = R"(
 <rml>
 <head>
     <link type="text/rcss" href="/../Tests/Data/style.rcss"/>
@@ -76,11 +53,6 @@ static String document_rml = R"(
 </body>
 </rml>
 )";
-
-TEST_CASE("backgrounds_and_borders")
-{
-	Context* context = TestsShell::GetContext();
-	REQUIRE(context);
 
 	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
 	REQUIRE(document);
@@ -137,6 +109,150 @@ TEST_CASE("backgrounds_and_borders")
 			context->Render();
 		});
 	}
+
+	document->Close();
+}
+
+TEST_CASE("background_border.empty_vs_bordered_divs")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	constexpr int num_elements = 500;
+	String divs;
+	divs.reserve(num_elements * 6);
+	for (int i = 0; i < num_elements; i++)
+		divs += "<div/>";
+
+	String document_rml = R"(
+<rml>
+<head>
+    <link type="text/rcss" href="/../Tests/Data/style.rcss"/>
+	<style>
+		#container > div {
+			width: 50px;
+			height: 20px;
+		}
+		#container.bordered > div {
+			border-width: 2px;
+			border-color: #ccc;
+		}
+	</style>
+</head>
+<body>
+<div id="container">
+)" + divs +
+		R"(
+</div>
+</body>
+</rml>
+)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	TestsShell::RenderLoop();
+
+	Element* container = document->GetElementById("container");
+
+	nanobench::Bench bench;
+	bench.title("Empty vs bordered divs");
+	bench.relative(true);
+	bench.minEpochIterations(200);
+	bench.warmup(50);
+
+	bench.run("Render empty", [&] { context->Render(); });
+
+	container->SetClass("bordered", true);
+	TestsShell::RenderLoop();
+
+	bench.run("Render borders", [&] { context->Render(); });
+
+	document->Close();
+}
+
+TEST_CASE("box_shadow")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	static String document_rml = R"(
+<rml>
+<head>
+    <link type="text/rcss" href="/../Tests/Data/style.rcss"/>
+	<style>
+		#boxshadow > div {
+			width: 280dp;
+			height: 70dp;
+			border: 2dp #def6f7;
+			margin: 10dp auto;
+			padding: 15dp;
+			border-radius: 30dp 8dp;
+			box-sizing: border-box;
+			margin-top: 100px;
+			margin-bottom: 100px;
+		}
+		#boxshadow.blur > div {
+			box-shadow:
+				#f00f  40px  30px 25px 0px,
+				#00ff -40px -30px 45px 0px,
+				#0f08 -60px  70px 60px 0px,
+				#333a  0px  0px 30px 15px inset;
+		}
+	</style>
+</head>
+
+<body>
+<div id="boxshadow" class="blur">
+	<div/><div/><div/><div/><div/><div/><div/><div/><div/><div/>
+</div>
+</body>
+</rml>
+)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+
+	nanobench::Bench bench;
+	bench.title("Box-shadow");
+	bench.relative(true);
+	bench.warmup(5);
+
+	TestsShell::RenderLoop(true);
+
+	Element* element_boxshadow = document->GetElementById("boxshadow");
+
+	ElementList elements;
+	document->QuerySelectorAll(elements, "#boxshadow > div");
+	REQUIRE(!elements.empty());
+	bench.run("Reference (update + render)", [&] { TestsShell::RenderLoop(false); });
+
+	element_boxshadow->SetClass("blur", true);
+	bench.run("Box-shadow (repeated)", [&] {
+		// Force regeneration of backgrounds without changing layout
+		for (auto& element : elements)
+			element->SetProperty(Rml::PropertyId::BackgroundColor, Rml::Property(Colourb(), Unit::COLOUR));
+		TestsShell::RenderLoop(false);
+	});
+
+	unsigned int unique_id = 0;
+	element_boxshadow->SetClass("blur", false);
+	bench.run("Box-shadow (unique)", [&] {
+		for (Element* element : elements)
+		{
+			unique_id += 1;
+			String id_string = CreateString("%x", unique_id);
+			REQUIRE(id_string.size() < 12);
+			id_string.resize(12, 'f');
+			const auto id_index_to_color = [&](int color_index) { return id_string.substr(color_index * 3, 3); };
+			const String value =
+				CreateString("#%sf 40px 30px 25px 0px, #%sf -40px -30px 0px 0px, #%s8 -60px 70px 0px 0px, #%sa 0px 0px 30px 15px inset",
+					id_index_to_color(0).c_str(), id_index_to_color(1).c_str(), id_index_to_color(2).c_str(), id_index_to_color(3).c_str());
+			element->SetProperty("box-shadow", value);
+		}
+		TestsShell::RenderLoop(false);
+	});
 
 	document->Close();
 }

@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "../Common/TestsInterface.h"
 #include "../Common/TestsShell.h"
 #include "../Common/TypesToString.h"
@@ -283,7 +255,7 @@ TEST_CASE("animation.decorator")
 		{
 			const double t_final = 0.1;
 
-			system_interface->SetTime(0.0);
+			system_interface->SetManualTime(0.0);
 			String document_rml = Rml::CreateString(document_decorator_rml.c_str(), test.from_rule.c_str(), test.to_rule.c_str(),
 				property_str.c_str(), test.from.c_str(), property_str.c_str(), test.to.c_str());
 
@@ -293,7 +265,7 @@ TEST_CASE("animation.decorator")
 			document->Show();
 			TestsShell::RenderLoop();
 
-			system_interface->SetTime(0.25 * t_final);
+			system_interface->SetManualTime(0.25 * t_final);
 			TestsShell::RenderLoop();
 
 			CAPTURE(property_str);
@@ -304,8 +276,6 @@ TEST_CASE("animation.decorator")
 			document->Close();
 		}
 	}
-
-	system_interface->SetTime(0.0);
 
 	TestsShell::ShutdownShell();
 }
@@ -413,7 +383,7 @@ TEST_CASE("animation.filter")
 		{
 			const double t_final = 0.1;
 
-			system_interface->SetTime(0.0);
+			system_interface->SetManualTime(0.0);
 			String document_rml = Rml::CreateString(document_filter_rml.c_str(), property_str, test.from.c_str(), property_str, test.to.c_str());
 
 			ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
@@ -421,7 +391,7 @@ TEST_CASE("animation.filter")
 
 			document->Show();
 
-			system_interface->SetTime(0.25 * t_final);
+			system_interface->SetManualTime(0.25 * t_final);
 			TestsShell::RenderLoop();
 
 			CHECK_MESSAGE(element->GetProperty<String>(property_str) == test.expected_25p, property_str, " from: ", test.from, ", to: ", test.to);
@@ -429,8 +399,6 @@ TEST_CASE("animation.filter")
 			document->Close();
 		}
 	}
-
-	system_interface->SetTime(0.0);
 
 	TestsShell::ShutdownShell();
 }
@@ -488,7 +456,7 @@ TEST_CASE("animation.case_sensitivity")
 
 	for (const auto& test_case : test_cases)
 	{
-		system_interface->SetTime(0.0);
+		system_interface->SetManualTime(0.0);
 		INFO("@keyframes: ", test_case.keyframe_name);
 		INFO("animation: ", test_case.animation_name);
 
@@ -504,7 +472,7 @@ TEST_CASE("animation.case_sensitivity")
 		while (t < t_end)
 		{
 			t += dt;
-			system_interface->SetTime(t);
+			system_interface->SetManualTime(t);
 			context->Update();
 		}
 
@@ -513,7 +481,6 @@ TEST_CASE("animation.case_sensitivity")
 		document->Close();
 	}
 
-	system_interface->SetTime(0.0);
 	TestsShell::ShutdownShell();
 }
 
@@ -586,7 +553,7 @@ TEST_CASE("animation.case_sensitive_distinct_keyframes")
 	for (const auto& test_case : test_cases)
 	{
 		INFO("Class name: ", test_case.class_name);
-		system_interface->SetTime(0.0);
+		system_interface->SetManualTime(0.0);
 		ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
 		Element* element = document->GetChild(0);
 		element->SetClass(test_case.class_name, true);
@@ -599,7 +566,7 @@ TEST_CASE("animation.case_sensitive_distinct_keyframes")
 		while (t < t_end)
 		{
 			t += dt;
-			system_interface->SetTime(t);
+			system_interface->SetManualTime(t);
 			context->Update();
 		}
 
@@ -608,7 +575,6 @@ TEST_CASE("animation.case_sensitive_distinct_keyframes")
 		document->Close();
 	}
 
-	system_interface->SetTime(0.0);
 	TestsShell::ShutdownShell();
 }
 
@@ -682,7 +648,7 @@ TEST_CASE("animation.multiple_values")
 	};
 
 	{
-		system_interface->SetTime(0.0);
+		system_interface->SetManualTime(0.0);
 		ElementDocument* document = context->LoadDocumentFromMemory(document_multiple_values_rml, "assets/");
 		Element* element = document->GetChild(0);
 
@@ -695,7 +661,7 @@ TEST_CASE("animation.multiple_values")
 			while (t < test.time)
 			{
 				t = Math::Min(t + dt, test.time);
-				system_interface->SetTime(t);
+				system_interface->SetManualTime(t);
 				context->Update();
 			}
 
@@ -707,7 +673,6 @@ TEST_CASE("animation.multiple_values")
 		document->Close();
 	}
 
-	system_interface->SetTime(0.0);
 	TestsShell::ShutdownShell();
 }
 
@@ -798,7 +763,7 @@ TEST_CASE("animation.multiple_overlapping")
 	{
 		system_interface->SetNumExpectedWarnings(2);
 
-		system_interface->SetTime(0.0);
+		system_interface->SetManualTime(0.0);
 
 		ElementDocument* document = context->LoadDocumentFromMemory(document_animation_multiple_values_rml, "assets/");
 		Element* element = document->GetChild(0);
@@ -813,7 +778,7 @@ TEST_CASE("animation.multiple_overlapping")
 			while (t < test.time)
 			{
 				t = Math::Min(t + dt, test.time);
-				system_interface->SetTime(t);
+				system_interface->SetManualTime(t);
 				context->Update();
 			}
 
@@ -825,7 +790,6 @@ TEST_CASE("animation.multiple_overlapping")
 		document->Close();
 	}
 
-	system_interface->SetTime(0.0);
 	TestsShell::ShutdownShell();
 }
 
@@ -906,7 +870,7 @@ TEST_CASE("transition.display_and_visibility")
 	};
 
 	{
-		system_interface->SetTime(0.0);
+		system_interface->SetManualTime(0.0);
 
 		ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
 		Element* element = document->GetChild(0);
@@ -919,7 +883,7 @@ TEST_CASE("transition.display_and_visibility")
 			while (t < test.time)
 			{
 				t = Math::Min(t + dt, test.time);
-				system_interface->SetTime(t);
+				system_interface->SetManualTime(t);
 				TestsShell::RenderLoop(false);
 			}
 
@@ -938,6 +902,91 @@ TEST_CASE("transition.display_and_visibility")
 		document->Close();
 	}
 
-	system_interface->SetTime(0.0);
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.transform_interpolation")
+{
+	static const String document_rml_template = R"(
+<rml>
+<head>
+	<title>Test</title>
+	<link type="text/rcss" href="/assets/rml.rcss"/>
+	<style>
+		body { inset: 0; }
+		@keyframes move {
+			from { transform: %s; }
+			to   { transform: %s; }
+		}
+		div {
+			width: 64px;
+			height: 64px;
+			animation: move 0.1s;
+		}
+	</style>
+</head>
+
+<body>
+	<div/>
+</body>
+</rml>
+)";
+
+	struct Test {
+		String from;
+		String to;
+		String expected_midpoint;
+	};
+
+	const Vector<Test> tests{
+		{
+			"translate(0px, 50px)",
+			"translate3d(-600px, -200px, -200px) rotate3d(1, 0, 0, 60deg) skewX(-10deg)",
+			"translate3d(-300px, -75px, -100px) rotate3d(1, 0, 0, 30deg) skewX(-5deg)",
+		},
+		{
+			"translate3d(-600px, -200px, -200px) rotate3d(1, 0, 0, 60deg) skewX(-10deg)",
+			"translate(0px, 50px)",
+			"translate3d(-300px, -75px, -100px) rotate3d(1, 0, 0, 30deg) skewX(-5deg)",
+		},
+		{
+			"none",
+			"rotate3d(0, 1, 0, 60deg)",
+			"rotate3d(0, 1, 0, 30deg)",
+		},
+		{
+			"scale(3)",
+			"scale(1) rotate3d(3, 4, 0, 90deg)",
+			"scale(2, 2) rotate3d(0.6, 0.8, 0, 45deg)",
+		},
+	};
+
+	TestsSystemInterface* system_interface = TestsShell::GetTestsSystemInterface();
+	Context* context = TestsShell::GetContext();
+
+	for (const Test& test : tests)
+	{
+		const double t_final = 0.1;
+
+		system_interface->SetManualTime(0.0);
+		const String document_rml = CreateString(document_rml_template.c_str(), test.from.c_str(), test.to.c_str());
+
+		ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
+		document->Show();
+
+		system_interface->SetManualTime(0.5 * t_final);
+		context->Update();
+
+		Element* element = document->GetChild(0);
+		String transform_str = element->GetProperty<String>("transform");
+		CAPTURE(test.from);
+		CAPTURE(test.to);
+		CAPTURE(transform_str);
+		CHECK(transform_str.find("decomposedMatrix3d") == String::npos);
+		CHECK(transform_str == test.expected_midpoint);
+
+		document->Close();
+	}
+
 	TestsShell::ShutdownShell();
 }

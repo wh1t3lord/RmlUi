@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019- The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "SVGCache.h"
 #include "../../Include/RmlUi/Core/CallbackTexture.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
@@ -52,14 +24,15 @@
 namespace Rml {
 namespace SVG {
 	struct SVGKey {
-		String path;
+		String source_id;
 		Vector2i dimensions;
 		bool crop_to_content;
 		ColourbPremultiplied colour;
 
 		friend bool operator==(const SVGKey& lhs, const SVGKey& rhs)
 		{
-			return lhs.path == rhs.path && lhs.dimensions == rhs.dimensions && lhs.crop_to_content == rhs.crop_to_content && lhs.colour == rhs.colour;
+			return lhs.source_id == rhs.source_id && lhs.dimensions == rhs.dimensions && lhs.crop_to_content == rhs.crop_to_content &&
+				lhs.colour == rhs.colour;
 		}
 	};
 } // namespace SVG
@@ -71,7 +44,7 @@ struct hash<::Rml::SVG::SVGKey> {
 	size_t operator()(const ::Rml::SVG::SVGKey& key) const noexcept
 	{
 		size_t hash = 0;
-		Rml::Utilities::HashCombine(hash, key.path);
+		Rml::Utilities::HashCombine(hash, key.source_id);
 		Rml::Utilities::HashCombine(hash, key.dimensions.x);
 		Rml::Utilities::HashCombine(hash, key.dimensions.y);
 		Rml::Utilities::HashCombine(hash, key.crop_to_content);
@@ -85,8 +58,8 @@ struct hash<::Rml::SVG::SVGKey> {
 namespace Rml {
 namespace SVG {
 
-	static SharedPtr<SVGData> GetHandle(RenderManager& render_manager, String path, Vector2i dimensions, bool crop_to_content,
-		ColourbPremultiplied colour);
+	static SharedPtr<SVGData> GetHandle(RenderManager& render_manager, String source_id, const String& source, SVGCache::SourceType source_type,
+		Vector2i dimensions, bool crop_to_content, ColourbPremultiplied colour);
 	static void ReleaseHandle(SVGData* handle);
 
 	struct SVGGeometry {
@@ -152,54 +125,64 @@ namespace SVG {
 		return default_value;
 	}
 
-	static SharedPtr<SVGData> GetHandle(RenderManager& render_manager, String move_from_path, const Vector2i dimensions, const bool crop_to_content,
-		const ColourbPremultiplied colour)
+	static SharedPtr<SVGData> GetHandle(RenderManager& render_manager, String move_from_id, const String& source, SVGCache::SourceType source_type,
+		const Vector2i dimensions, const bool crop_to_content, const ColourbPremultiplied colour)
 	{
-		SVGKey key{std::move(move_from_path), dimensions, crop_to_content, colour};
-		const String& path = key.path;
+		SVGKey key{std::move(move_from_id), dimensions, crop_to_content, colour};
+		const String& source_id = key.source_id;
 		auto& documents = svg_cache_data->documents;
 		auto& handles = svg_cache_data->handles;
 
 		const auto it_handle = handles.find(key);
 		if (it_handle != handles.cend())
 		{
-			RMLUI_SVG_DEBUG_LOG("Found handle, reusing: %s, (%d, %d), %s, %#x", path.c_str(), dimensions.x, dimensions.y,
+			RMLUI_SVG_DEBUG_LOG("Found handle, reusing: %s, (%d, %d), %s, %#x", source_id.c_str(), dimensions.x, dimensions.y,
 				crop_to_content ? "crop_to_content" : "crop_none", *reinterpret_cast<const uint32_t*>(&colour[0]));
 			SharedPtr<SVGData> result = it_handle->second.lock();
 			RMLUI_ASSERTMSG(result, "Failed to lock handle in SVG cache");
 			return result;
 		}
 
-		RMLUI_SVG_DEBUG_LOG("Making new handle: %s, (%d, %d), %s, %#x", path.c_str(), dimensions.x, dimensions.y,
+		RMLUI_SVG_DEBUG_LOG("Making new handle: %s, (%d, %d), %s, %#x", source_id.c_str(), dimensions.x, dimensions.y,
 			crop_to_content ? "crop_to_content" : "crop_none", *reinterpret_cast<const uint32_t*>(&colour[0]));
 
 		// Find or create a document
-		auto it_svg_document = documents.find(path);
+		auto it_svg_document = documents.find(source_id);
 		if (it_svg_document == documents.cend())
 		{
-			RMLUI_SVG_DEBUG_LOG("Loading SVG document from file %s", path.c_str());
 			SVGDocument doc;
-
-			String svg_data;
-			if (path.empty() || !GetFileInterface()->LoadFile(path, svg_data))
+			if (source_type == SVGCache::SourceType::File)
 			{
-				Log::Message(Rml::Log::Type::LT_WARNING, "Could not load SVG file %s", path.c_str());
-				return {};
-			}
+				RMLUI_SVG_DEBUG_LOG("Loading SVG document from file %s", source.c_str());
+				String svg_data;
+				if (source.empty() || !GetFileInterface()->LoadFile(source, svg_data))
+				{
+					Log::Message(Rml::Log::Type::LT_WARNING, "Could not load SVG file %s", source.c_str());
+					return {};
+				}
 
-			// We use a reset-release approach here in case clients use a non-std unique_ptr (lunasvg uses std::unique_ptr)
-			doc.svg_document.reset(lunasvg::Document::loadFromData(svg_data.data(), svg_data.size()).release());
+				// We use a reset-release approach here in case clients use a non-std unique_ptr (lunasvg uses std::unique_ptr). We also use
+				// loadFromData(char*, size_t) instead of loadFromData(std::string) in case clients use a non-std string.
+				doc.svg_document.reset(lunasvg::Document::loadFromData(svg_data.data(), svg_data.size()).release());
+			}
+			else
+			{
+				RMLUI_SVG_DEBUG_LOG("Loading SVG document from element %s contents", source_id.c_str());
+				// We use a reset-release approach here in case clients use a non-std unique_ptr (lunasvg uses std::unique_ptr). We also use
+				// loadFromData(char*, size_t) instead of loadFromData(std::string) in case clients use a non-std string.
+				doc.svg_document.reset(lunasvg::Document::loadFromData(source.data(), source.size()).release());
+			}
 
 			if (!doc.svg_document)
 			{
-				Log::Message(Rml::Log::Type::LT_WARNING, "Could not load SVG data from file %s", path.c_str());
+				Log::Message(Rml::Log::Type::LT_WARNING, "Could not load SVG data for item %s", source_id.c_str());
 				return {};
 			}
 
 			doc.intrinsic_dimensions.x = Math::Max(float(doc.svg_document->width()), 1.0f);
 			doc.intrinsic_dimensions.y = Math::Max(float(doc.svg_document->height()), 1.0f);
 
-			const auto it_inserted = documents.insert_or_assign(path, std::move(doc));
+			const auto it_inserted = documents.insert_or_assign(source_id, std::move(doc));
 			RMLUI_ASSERT(it_inserted.second);
 
 			it_svg_document = it_inserted.first;
@@ -317,7 +300,7 @@ namespace SVG {
 		auto it_handle = handles.find(key);
 		RMLUI_ASSERT(it_handle != handles.cend());
 
-		const auto it_document = documents.find(key.path);
+		const auto it_document = documents.find(key.source_id);
 		RMLUI_ASSERT(it_document != documents.cend());
 		SVGDocument& svg_document = it_document->second;
 
@@ -376,7 +359,8 @@ namespace SVG {
 		svg_cache_data.Shutdown();
 	}
 
-	SharedPtr<SVGData> SVGCache::GetHandle(const String& source, Element* element, const bool crop_to_content, const BoxArea area)
+	SharedPtr<SVGData> SVGCache::GetHandle(const String& source_id, const String& source, SourceType source_type, Element* element,
+		const bool crop_to_content, const BoxArea area)
 	{
 		RenderManager* render_manager = element->GetRenderManager();
 		if (!render_manager)
@@ -388,14 +372,18 @@ namespace SVG {
 		if (dimensions.x == 0 || dimensions.y == 0)
 			dimensions = {0, 0};
 
-		String path;
-		if (ElementDocument* document = element->GetOwnerDocument())
+		if (source_type == File)
 		{
-			const String document_source_url = StringUtilities::Replace(document->GetSourceURL(), '|', ':');
-			GetSystemInterface()->JoinPath(path, document_source_url, source);
+			String path;
+			if (ElementDocument* document = element->GetOwnerDocument())
+			{
+				const String document_source_url = StringUtilities::Replace(document->GetSourceURL(), '|', ':');
+				GetSystemInterface()->JoinPath(path, document_source_url, source_id);
+			}
+			return Rml::SVG::GetHandle(*render_manager, path, path, source_type, dimensions, crop_to_content, colour);
 		}
 
-		return Rml::SVG::GetHandle(*render_manager, std::move(path), dimensions, crop_to_content, colour);
+		return Rml::SVG::GetHandle(*render_manager, source_id, source, source_type, dimensions, crop_to_content, colour);
 	}
 
 } // namespace SVG

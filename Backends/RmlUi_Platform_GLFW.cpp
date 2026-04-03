@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "RmlUi_Platform_GLFW.h"
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Input.h>
@@ -35,8 +7,10 @@
 
 #define GLFW_HAS_EXTRA_CURSORS (GLFW_VERSION_MAJOR >= 3 && GLFW_VERSION_MINOR >= 4)
 
-SystemInterface_GLFW::SystemInterface_GLFW()
+SystemInterface_GLFW::SystemInterface_GLFW(GLFWwindow* window) : window(window)
 {
+	RMLUI_ASSERTMSG(window, "Please provide a valid SDL window to the SDL system interface");
+
 	cursor_pointer = glfwCreateStandardCursor(GLFW_HAND_CURSOR);
 	cursor_cross = glfwCreateStandardCursor(GLFW_CROSSHAIR_CURSOR);
 	cursor_text = glfwCreateStandardCursor(GLFW_IBEAM_CURSOR);
@@ -61,11 +35,6 @@ SystemInterface_GLFW::~SystemInterface_GLFW()
 	glfwDestroyCursor(cursor_resize);
 	glfwDestroyCursor(cursor_unavailable);
 #endif
-}
-
-void SystemInterface_GLFW::SetWindow(GLFWwindow* in_window)
-{
-	window = in_window;
 }
 
 double SystemInterface_GLFW::GetElapsedTime()
@@ -94,20 +63,24 @@ void SystemInterface_GLFW::SetMouseCursor(const Rml::String& cursor_name)
 	else if (Rml::StringUtilities::StartsWith(cursor_name, "rmlui-scroll"))
 		cursor = cursor_move;
 
-	if (window)
-		glfwSetCursor(window, cursor);
+	glfwSetCursor(window, cursor);
 }
 
 void SystemInterface_GLFW::SetClipboardText(const Rml::String& text_utf8)
 {
-	if (window)
-		glfwSetClipboardString(window, text_utf8.c_str());
+	glfwSetClipboardString(window, text_utf8.c_str());
 }
 
 void SystemInterface_GLFW::GetClipboardText(Rml::String& text)
 {
-	if (window)
-		text = Rml::String(glfwGetClipboardString(window));
+	if (const char* clipboard = glfwGetClipboardString(window))
+	{
+		text = Rml::String(clipboard);
+	}
+	else
+	{
+		text.clear();
+	}
 }
 
 bool RmlGLFW::ProcessKeyCallback(Rml::Context* context, int key, int action, int mods)

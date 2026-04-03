@@ -1,33 +1,4 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
-#ifndef RMLUI_CORE_DATAMODELHANDLE_H
-#define RMLUI_CORE_DATAMODELHANDLE_H
+#pragma once
 
 #include "DataStructHandle.h"
 #include "DataTypeRegister.h"
@@ -135,6 +106,7 @@ public:
 
 private:
 	bool BindVariable(const String& name, DataVariable data_variable);
+	friend class Detail::DataModelConstructorAccessor;
 
 	DataModel* model;
 	DataTypeRegister* type_register;
@@ -144,7 +116,7 @@ template <typename T>
 inline bool DataModelConstructor::RegisterScalar(DataTypeGetFunc<T> get_func, DataTypeSetFunc<T> set_func)
 {
 	// We allow custom getters/setters for enums, even though they are considered builtin data scalars.
-	static_assert(!is_builtin_data_scalar<T>::value || std::is_enum<T>::value,
+	static_assert(!is_builtin_data_scalar_v<T> || std::is_enum_v<T>,
 		"Cannot register scalar data type function. Arithmetic types and String are handled internally and does not need to be registered.");
 	const FamilyId id = Family<T>::Id();
 
@@ -178,7 +150,7 @@ inline bool DataModelConstructor::RegisterCustomDataVariableDefinition(UniquePtr
 template <typename T>
 inline StructHandle<T> DataModelConstructor::RegisterStruct()
 {
-	static_assert(std::is_class<T>::value, "Type must be a struct or class type.");
+	static_assert(std::is_class_v<T>, "Type must be a struct or class type.");
 	const FamilyId id = Family<T>::Id();
 
 	auto struct_definition = Rml::MakeUnique<StructDefinition>();
@@ -216,6 +188,10 @@ inline bool DataModelConstructor::RegisterArray()
 	return true;
 }
 
+namespace Detail {
+	class DataModelConstructorAccessor {
+	public:
+		RMLUICORE_API static const UnorderedMap<String, DataVariable>& GetAllVariables(const DataModelConstructor& data_model_constructor);
+	};
+} // namespace Detail
 } // namespace Rml
-
-#endif

@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.10...3.27)
 
 project("RmlUi"
-	VERSION "6.2"
+	VERSION "6.3"
 	DESCRIPTION "C++ user interface library based on the HTML and CSS standards"
 	LANGUAGES "C" "CXX"
 )
@@ -175,8 +175,6 @@ configure_file(
 	"${CMAKE_CURRENT_BINARY_DIR}/install/RmlUiConfig.cmake"
 	@ONLY
 )
-# RMLUI_CMAKE_MINIMUM_VERSION_RAISE_NOTICE:
-# From CMake 3.11 use compatibility mode `SameMinorVersion`.
 write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/install/RmlUiConfigVersion.cmake"
 	COMPATIBILITY ExactVersion
 )

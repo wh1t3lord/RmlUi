@@ -1,33 +1,4 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
-#ifndef RMLUI_CORE_CONTEXT_H
-#define RMLUI_CORE_CONTEXT_H
+#pragma once
 
 #include "Header.h"
 #include "Input.h"
@@ -52,8 +23,6 @@ enum class EventId : uint16_t;
 
 /**
     A context for storing, rendering, and processing RML documents. Multiple contexts can exist simultaneously.
-
-    @author Peter Curry
  */
 
 class RMLUICORE_API Context : public ScriptInterface {
@@ -293,6 +262,9 @@ public:
 	/// @param[in] name The name of the data model.
 	/// @return A constructor for the data model, or empty if it could not be found.
 	DataModelConstructor GetDataModel(const String& name);
+	/// Retrieves all data models in this context.
+	/// @return A map of all data models in this context, keyed by their name.
+	UnorderedMap<String, DataModelConstructor> GetDataModels() const;
 	/// Removes the given data model.
 	/// This also removes all data views, controllers, and bindings contained by the data model.
 	/// @warning Invalidates all handles and constructors pointing to the data model.
@@ -368,11 +340,11 @@ private:
 	bool mouse_active;
 
 	// The current state of Touches, required to implement proper inertia scrolling.
-	struct TouchState
-	{
+	struct TouchState {
 		bool scrolling_right = false;
 		bool scrolling_down = false;
 		Vector2f start_position;
+		Vector2f inertia_position;
 		Vector2f last_position;
 		Element* scroll_container = nullptr;
 		double scrolling_last_time = 0;
@@ -406,8 +378,7 @@ private:
 	// itself can't be part of it.
 	ElementSet drag_hover_chain;
 
-	using DataModels = UnorderedMap<String, UniquePtr<DataModel>>;
-	DataModels data_models;
+	UnorderedMap<String, UniquePtr<DataModel>> data_models;
 
 	UniquePtr<DataTypeRegister> default_data_type_register;
 
@@ -428,6 +399,8 @@ private:
 	// Updates the current hover elements, sending required events.
 	void UpdateHoverChain(Vector2i old_mouse_position, int key_modifier_state = 0, Dictionary* out_parameters = nullptr,
 		Dictionary* out_drag_parameters = nullptr);
+	// Resets the current active element and its chain.
+	void ResetActiveChain();
 
 	// Creates the drag clone from the given element. The old drag clone will be released if necessary.
 	void CreateDragClone(Element* element);
@@ -454,21 +427,13 @@ private:
 
 	// Helper method to lookup TouchState by touch id.
 	TouchState* LookupTouch(TouchId identifier);
-	/// Process single touch movement for this context.
-	/// @param[in] touch Touch data: identifier and coordinates.
-	/// @return True if touch point is not interacting with any elements in the context, otherwise false.
+	// Process a single touch movement for this context.
 	bool ProcessTouchMove(const Touch& touch, int key_modifier_state);
-	/// Process single touch press for this context.
-	/// @param[in] touch Touch data: identifier and coordinates.
-	/// @return True if touch point is not interacting with any elements in the context, otherwise false.
+	// Process a single touch press for this context.
 	bool ProcessTouchStart(const Touch& touch, int key_modifier_state);
-	/// Process single touch release for this context.
-	/// @param[in] touch Touch data: identifier and coordinates.
-	/// @return True if touch point is not interacting with any elements in the context, otherwise false.
+	// Process a single touch release for this context.
 	bool ProcessTouchEnd(const Touch& touch, int key_modifier_state);
-	/// Cancel processing touch for this context.
-	/// @param[in] touch Touch data: identifier and coordinates.
-	/// @return True if touch point is not interacting with any elements in the context, otherwise false.
+	// Cancel processing a touch for this context.
 	bool ProcessTouchCancel(const Touch& touch);
 
 	// Sends the specified event to all elements in new_items that don't appear in old_items.
@@ -478,4 +443,3 @@ private:
 };
 
 } // namespace Rml
-#endif

@@ -1,33 +1,4 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2025 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
-#ifndef RMLUI_BACKENDS_RENDERER_VK_H
-#define RMLUI_BACKENDS_RENDERER_VK_H
+#pragma once
 
 #include <RmlUi/Core/RenderInterface.h>
 
@@ -47,31 +18,12 @@
 	#define RMLUI_VK_ASSERTMSG(statement, msg) static_cast<void>(statement)
 #endif
 
-// your specified api version, but in future it will be dynamic ^_^
+// Your specified API version. Ideally, this will be dynamic in the future.
 #define RMLUI_VK_API_VERSION VK_API_VERSION_1_0
 
 namespace Gfx {
 struct FramebufferData;
 }
-
-/**
- * Vulkan render interface for RmlUi
- *
- * My aim is to create compact, but easy to use class
- * I understand that it isn't good architectural choice to keep all things in one class
- * But I follow to RMLUI design and for implementing one GAPI backend it just needs one class
- * For user looks cool, but for programmer...
- *
- * It's better to try operate with very clean 'one-class' architecture rather than create own library for Vulkan
- * With many different classes, with not trivial signatures and etc
- * And as a result we should document that library so it's just a headache for all of us
- *
- * Reminder to users: If you want to implement your Vulkan renderer check previous commits of this work, because current system works only with new
- * and delete operations every frame (CPU side), on GPU we implemented the pre-allocated buffer with virtual allocs (Vma) so there's no problems and
- * all fine. I wrote all ideas and implementation for that.
- *
- * @author wh1t3lord (https://github.com/wh1t3lord)
- */
 
 class RenderInterface_VK : public Rml::RenderInterface {
 public:
@@ -755,5 +707,3 @@ private:
 	UploadResourceManager m_upload_manager;
 	DescriptorPoolManager m_manager_descriptors;
 };
-
-#endif

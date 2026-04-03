@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "../Common/Mocks.h"
 #include "../Common/TestsShell.h"
 #include <RmlUi/Core/Context.h>
@@ -376,6 +348,81 @@ TEST_CASE("Modal.FocusWithin")
 	Element* input = document->GetElementById("input");
 	input->Focus();
 	REQUIRE(context->GetFocusElement() == input);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("ScrollFlag")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	static const String document_rml = R"(
+<rml>
+<head>
+<title>Demo</title>
+<link type="text/rcss" href="/assets/rml.rcss" />
+<link type="text/rcss" href="/../Tests/Data/style.rcss" />
+<style>
+	body {
+		width: 400px;
+		height: 300px;
+		overflow-y: scroll;
+		background-color: #333;
+	}
+	div {
+		height: 200px;
+		background-color: #c33;
+		margin: 5px 0;
+	}
+</style>
+</head>
+<body>
+	<div/>
+	<div/>
+	<input id="input" type="text" autofocus/>
+	<div/>
+	<div/>
+</body>
+</rml>
+)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	Element* input = document->GetElementById("input");
+	REQUIRE(input);
+
+	constexpr float scroll_y_none = 0.f;
+	constexpr float scroll_y_input = 138.f;
+
+	SUBCASE("Default")
+	{
+		document->Show();
+		CHECK(document->GetScrollTop() == scroll_y_input);
+	}
+	SUBCASE("Auto")
+	{
+		document->Show(ModalFlag::None, FocusFlag::Auto, ScrollFlag::Auto);
+		CHECK(document->GetScrollTop() == scroll_y_input);
+	}
+	SUBCASE("FocusNone")
+	{
+		document->Show(ModalFlag::None, FocusFlag::None, ScrollFlag::Auto);
+		CHECK(document->GetScrollTop() == scroll_y_none);
+	}
+	SUBCASE("FocusDocument")
+	{
+		document->Show(ModalFlag::None, FocusFlag::Document, ScrollFlag::Auto);
+		CHECK(document->GetScrollTop() == scroll_y_none);
+	}
+	SUBCASE("ScrollNone")
+	{
+		document->Show(ModalFlag::None, FocusFlag::Auto, ScrollFlag::None);
+		CHECK(document->GetScrollTop() == scroll_y_none);
+	}
+
+	TestsShell::RenderLoop();
 
 	document->Close();
 	TestsShell::ShutdownShell();

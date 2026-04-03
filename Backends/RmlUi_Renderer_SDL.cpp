@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "RmlUi_Renderer_SDL.h"
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/FileInterface.h>
@@ -95,18 +67,23 @@ void RenderInterface_SDL::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml
 	const int* indices = geometry->indices.data();
 	const size_t num_indices = geometry->indices.size();
 
-	Rml::UniquePtr<SDL_Vertex[]> sdl_vertices{new SDL_Vertex[num_vertices]};
+	if (sdl_vertices_size < num_vertices)
+	{
+		sdl_vertices_size = num_vertices * 1.5;
+		sdl_vertices.reset(new SDL_Vertex[sdl_vertices_size]);
+	}
 
 	for (size_t i = 0; i < num_vertices; i++)
 	{
-		sdl_vertices[i].position = {vertices[i].position.x + translation.x, vertices[i].position.y + translation.y};
-		sdl_vertices[i].tex_coord = {vertices[i].tex_coord.x, vertices[i].tex_coord.y};
+		SDL_Vertex& sdl_vertex = sdl_vertices[i];
+		sdl_vertex.position = {vertices[i].position.x + translation.x, vertices[i].position.y + translation.y};
+		sdl_vertex.tex_coord = {vertices[i].tex_coord.x, vertices[i].tex_coord.y};
 
 		const auto& color = vertices[i].colour;
 #if SDL_MAJOR_VERSION >= 3
-		sdl_vertices[i].color = {color.red / 255.f, color.green / 255.f, color.blue / 255.f, color.alpha / 255.f};
+		sdl_vertex.color = {color.red / 255.f, color.green / 255.f, color.blue / 255.f, color.alpha / 255.f};
 #else
-		sdl_vertices[i].color = {color.red, color.green, color.blue, color.alpha};
+		sdl_vertex.color = {color.red, color.green, color.blue, color.alpha};
 #endif
 	}
 

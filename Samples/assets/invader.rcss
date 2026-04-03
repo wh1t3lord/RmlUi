@@ -318,6 +318,10 @@ input.text:focus-visible, input.password:focus-visible
 {
 	decorator: tiled-horizontal( text-focus-l, text-focus-c, auto );
 }
+input.text::placeholder, input.password::placeholder
+{
+	color: #888;
+}
 
 textarea
 {

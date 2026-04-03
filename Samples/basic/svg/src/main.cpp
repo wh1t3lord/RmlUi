@@ -1,35 +1,35 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include <RmlUi/Core.h>
 #include <RmlUi/Debugger.h>
 #include <RmlUi_Backend.h>
 #include <Shell.h>
+
+struct SVGToogleStruct {
+	Rml::String svg_data = R"(<circle cx="25" cy="25" r="20" stroke="black" stroke-width="3" fill="red" />)";
+	Rml::String line_color = "black";
+	Rml::String fill_color = "red";
+	Rml::Element* svg_element;
+	bool toggle_state = false;
+	void Toggle(Rml::DataModelHandle model, Rml::Event& /*event*/, const Rml::VariantList& /*args*/)
+	{
+		toggle_state = !toggle_state;
+
+		// This example uses 3 methods of setting inline SVG data
+		// - Used to set the svg data via data-rml with the main svg data in the data-rml attribute but concatenating colour variables from the model
+		line_color = toggle_state ? "yellow" : "black";
+		fill_color = toggle_state ? "green" : "red";
+
+		// - Used to set the svg data via data-rml with all the svg data contained within a model property
+		svg_data = R"(<circle cx="25" cy="25" r="20" stroke=")" + line_color + R"(" stroke-width="3" fill=")" + fill_color + R"(" />)";
+
+		// - Using SetInnerRML directly on an SVG element to change the SVG data
+		if (svg_element)
+			svg_element->SetInnerRML(svg_data);
+
+		model.DirtyVariable("svg_data");
+		model.DirtyVariable("line_color");
+		model.DirtyVariable("fill_color");
+	}
+} toggle_model;
 
 #if defined RMLUI_PLATFORM_WIN32
 	#include <RmlUi_Include_Windows.h>
@@ -69,16 +69,33 @@ int main(int /*argc*/, char** /*argv*/)
 		return -1;
 	}
 
+	Rml::String svg_data;
+	Rml::DataModelConstructor dm_con = context->CreateDataModel("svg_test_model");
+	if (auto model_handle = dm_con.RegisterStruct<SVGToogleStruct>())
+	{
+		model_handle.RegisterMember("name", &SVGToogleStruct::svg_data);
+		model_handle.RegisterMember("line_color", &SVGToogleStruct::line_color);
+		model_handle.RegisterMember("fill_color", &SVGToogleStruct::fill_color);
+		model_handle.RegisterMember("sprite", &SVGToogleStruct::toggle_state);
+	}
+	dm_con.Bind("svg_data", &toggle_model.svg_data);
+	dm_con.Bind("line_color", &toggle_model.line_color);
+	dm_con.Bind("fill_color", &toggle_model.fill_color);
+	dm_con.BindEventCallback("toggle_svg", &SVGToogleStruct::Toggle, &toggle_model);
+
 	Rml::Debugger::Initialise(context);
 	Shell::LoadFonts();
 
 	// Load and show the documents.
-	for (const char* filename : {"basic/svg/data/svg_element.rml", "basic/svg/data/svg_decorator.rml"})
+	std::vector<std::string> rml_docs = {"basic/svg/data/svg_element.rml", "basic/svg/data/svg_decorator.rml", "basic/svg/data/svg_inline.rml"};
+	for (const auto& rml_doc : rml_docs)
 	{
-		if (Rml::ElementDocument* document = context->LoadDocument(filename))
+		if (Rml::ElementDocument* document = context->LoadDocument(rml_doc))
 		{
 			document->Show();
-			document->GetElementById("title")->SetInnerRML("SVG");
+			document->GetElementById("title")->SetInnerRML(document->GetTitle());
+			if (Rml::Element* svg_element = document->GetElementById("svg_1"))
+				toggle_model.svg_element = svg_element;
 		}
 	}
 

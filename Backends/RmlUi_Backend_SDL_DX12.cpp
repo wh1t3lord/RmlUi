@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2025 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "RmlUi_Backend.h"
 #include "RmlUi_Platform_SDL.h"
 #include "RmlUi_Renderer_DX12.h"
@@ -33,10 +5,89 @@
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/FileInterface.h>
 #include <RmlUi/Core/Log.h>
+#include <RmlUi/Core/Profiling.h>
 
-#if SDL_MAJOR_VERSION == 2 && !defined(_WIN32)
-	#error "Only the Vulkan SDL backend is supported."
+#if SDL_MAJOR_VERSION >= 3
+	#include <SDL3_image/SDL_image.h>
+#else
+	#include <SDL_image.h>
+	#include <SDL_syswm.h>
 #endif
+
+/**
+    Custom render interface example for the SDL/DX12 backend.
+
+    Overloads the DirectX 12 render interface to load textures through SDL_image's built-in texture loading functionality.
+ */
+class RenderInterface_DX12_SDL : public RenderInterface_DX12 {
+public:
+	RenderInterface_DX12_SDL(void* p_window_handle, const Backend::RmlRendererSettings& settings) : RenderInterface_DX12(p_window_handle, settings) {}
+
+	Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) override
+	{
+		Rml::FileInterface* file_interface = Rml::GetFileInterface();
+		Rml::FileHandle file_handle = file_interface->Open(source);
+		if (!file_handle)
+			return {};
+
+		file_interface->Seek(file_handle, 0, SEEK_END);
+		const size_t buffer_size = file_interface->Tell(file_handle);
+		file_interface->Seek(file_handle, 0, SEEK_SET);
+
+		using Rml::byte;
+		Rml::UniquePtr<byte[]> buffer(new byte[buffer_size]);
+		file_interface->Read(buffer.get(), buffer_size, file_handle);
+		file_interface->Close(file_handle);
+
+		const size_t i_ext = source.rfind('.');
+		Rml::String extension = (i_ext == Rml::String::npos ? Rml::String() : source.substr(i_ext + 1));
+
+#if SDL_MAJOR_VERSION >= 3
+		auto CreateSurface = [&]() { return IMG_LoadTyped_IO(SDL_IOFromMem(buffer.get(), int(buffer_size)), 1, extension.c_str()); };
+		auto GetSurfaceFormat = [](SDL_Surface* surface) { return surface->format; };
+		auto ConvertSurface = [](SDL_Surface* surface, SDL_PixelFormat format) { return SDL_ConvertSurface(surface, format); };
+		auto DestroySurface = [](SDL_Surface* surface) { SDL_DestroySurface(surface); };
+#else
+		auto CreateSurface = [&]() { return IMG_LoadTyped_RW(SDL_RWFromMem(buffer.get(), int(buffer_size)), 1, extension.c_str()); };
+		auto GetSurfaceFormat = [](SDL_Surface* surface) { return surface->format->format; };
+		auto ConvertSurface = [](SDL_Surface* surface, Uint32 format) { return SDL_ConvertSurfaceFormat(surface, format, 0); };
+		auto DestroySurface = [](SDL_Surface* surface) { SDL_FreeSurface(surface); };
+#endif
+
+		SDL_Surface* surface = CreateSurface();
+		if (!surface)
+			return {};
+
+		texture_dimensions = {surface->w, surface->h};
+
+		if (GetSurfaceFormat(surface) != SDL_PIXELFORMAT_RGBA32)
+		{
+			// Ensure correct format for premultiplied alpha conversion and GenerateTexture below.
+			SDL_Surface* converted_surface = ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
+			DestroySurface(surface);
+			if (!converted_surface)
+				return {};
+
+			surface = converted_surface;
+		}
+
+		// Convert colors to premultiplied alpha, which is necessary for correct alpha compositing.
+		const size_t pixels_byte_size = surface->w * surface->h * 4;
+		byte* pixels = static_cast<byte*>(surface->pixels);
+		for (size_t i = 0; i < pixels_byte_size; i += 4)
+		{
+			const byte alpha = pixels[i + 3];
+			for (size_t j = 0; j < 3; ++j)
+				pixels[i + j] = byte(int(pixels[i + j]) * int(alpha) / 255);
+		}
+
+		Rml::TextureHandle texture_handle = RenderInterface_DX12::GenerateTexture({pixels, pixels_byte_size}, texture_dimensions);
+
+		DestroySurface(surface);
+
+		return texture_handle;
+	}
+};
 
 /**
     Global data used by this backend.
@@ -44,22 +95,21 @@
     Lifetime governed by the calls to Backend::Initialize() and Backend::Shutdown().
  */
 struct BackendData {
+	BackendData(SDL_Window* window) : system_interface(window), window(window) {}
+
 	SystemInterface_SDL system_interface;
-	RenderInterface_DX12* render_interface = nullptr;
-	Backend::RmlRenderInitInfo* p_default_pointer = nullptr;
-	SDL_Window* window = nullptr;
+	Rml::UniquePtr<RenderInterface_DX12_SDL> render_interface;
+
+	SDL_Window* window;
 
 	bool running = true;
 };
 static Rml::UniquePtr<BackendData> data;
 
-bool Backend::Initialize(const char* window_name, int width, int height, bool allow_resize, RmlRenderInitInfo* p_info)
+bool Backend::Initialize(const char* window_name, int width, int height, bool allow_resize)
 {
 	RMLUI_ASSERT(!data);
-	if (p_info)
-	{
-		p_info = nullptr;
-	}
+
 #if SDL_MAJOR_VERSION >= 3
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
 		return false;
@@ -70,6 +120,13 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 
 	// Submit click events when focusing the window.
 	SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+	// Touch events are handled natively, no need to generate synthetic mouse events for touch devices.
+	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+
+#if defined RMLUI_BACKEND_SIMULATE_TOUCH
+	// Simulate touch events from mouse events for testing touch behavior on a desktop machine.
+	SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "1");
+#endif
 
 #if SDL_MAJOR_VERSION >= 3
 	const float window_size_scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
@@ -85,7 +142,7 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 	SDL_Window* window = SDL_CreateWindowWithProperties(props);
 	SDL_DestroyProperties(props);
 #else
-	const Uint32 window_flags = ((allow_resize ? SDL_WINDOW_RESIZABLE : 0));
+	const Uint32 window_flags = (allow_resize ? SDL_WINDOW_RESIZABLE : 0);
 	SDL_Window* window = SDL_CreateWindow(window_name, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, window_flags);
 	// SDL2 implicitly activates text input on window creation. Turn it off for now, it will be activated again e.g. when focusing a text input field.
 	SDL_StopTextInput();
@@ -97,69 +154,48 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 		return false;
 	}
 
-	data = Rml::MakeUnique<BackendData>();
-	data->window = window;
-
-	if (!p_info)
+#if SDL_MAJOR_VERSION >= 3
+	HWND window_handle = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+#else
+	SDL_SysWMinfo wm_info = {};
+	SDL_VERSION(&wm_info.version);
+	if (!SDL_GetWindowWMInfo(window, &wm_info))
 	{
-		HWND window_handle{};
-#if SDL_MAJOR_VERSION == 2
-		SDL_SysWMinfo wmInfo;
-		SDL_VERSION(&wmInfo.version);
-		if (!SDL_GetWindowWMInfo(window, &wmInfo))
-		{
-			// Handle error (e.g., print SDL_GetError() and exit)
-			const char* error = SDL_GetError();
-			SDL_Log("SDL_GetWindowWMInfo failed: %s", error);
-			// Handle failure appropriately
-			return false;
-		}
-
-		if (wnInfo.info.win.window == nullptr)
-		{
-			SDL_Log("invalid win32 handle! failed to initialize renderer dx12 on sdl!");
-			// Handle failure appropriately
-			return false;
-		}
-
-		window_handle = wmInfo.info.win.window;
-#elif SDL_MAJOR_VERSION == 3
-		SDL_PropertiesID props = SDL_GetWindowProperties(window);
-
-		if (props == 0)
-		{
-			const char* error = SDL_GetError();
-			SDL_Log("SDL_GetWindowProperties failed: [%s]. Failed to initialize renderer dx12 on sdl", error);
-			return false;
-		}
-
-		void* p_not_casted_hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
-
-		if (p_not_casted_hwnd == nullptr)
-		{
-			const char* error = SDL_GetError();
-			SDL_Log("SDL_GetPointerProperty failed to obtained win32 hwnd: [%s]. Failed to initialize renderer dx12 on sdl", error);
-			return false;
-		}
-
-		window_handle = reinterpret_cast<HWND>(p_not_casted_hwnd);
+		Rml::Log::Message(Rml::Log::LT_ERROR, "SDL error getting window info: %s", SDL_GetError());
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return false;
+	}
+	HWND window_handle = wm_info.info.win.window;
 #endif
 
-		p_info = new RmlRenderInitInfo(window_handle, true);
-		p_info->Get_Settings().vsync = false;
-
-		RMLUI_ASSERT(data->p_default_pointer == nullptr && "must be not initialized! probably you forgot to call backend::shutdown");
-		data->p_default_pointer = p_info;
+	if (!window_handle)
+	{
+		Rml::Log::Message(Rml::Log::LT_ERROR, "Could not retrieve native window handle from SDL");
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return false;
 	}
 
-	data->render_interface = RmlDX12::Initialize(nullptr, p_info);
-
-	if (!data->render_interface)
-	{
-#ifdef _WIN32
-		MessageBoxA(NULL, "failed to create render interface dx12", "FATAL", 0);
+	// Get the actual window size (may differ due to DPI scaling).
+#if SDL_MAJOR_VERSION >= 3
+	SDL_GetWindowSizeInPixels(window, &width, &height);
+#else
+	SDL_GetWindowSize(window, &width, &height);
 #endif
-		SDL_DestroyWindow(data->window);
+
+	data = Rml::MakeUnique<BackendData>(window);
+
+	RmlRendererSettings settings = {};
+	settings.vsync = true;
+	settings.msaa_sample_count = RMLUI_RENDER_BACKEND_FIELD_MSAA_SAMPLE_COUNT;
+
+	data->render_interface = Rml::MakeUnique<RenderInterface_DX12_SDL>(window_handle, settings);
+
+	if (!data->render_interface || !(*data->render_interface))
+	{
+		Rml::Log::Message(Rml::Log::LT_ERROR, "Failed to initialize DirectX 12 render interface");
+		SDL_DestroyWindow(window);
 		data.reset();
 		SDL_Quit();
 		Rml::Log::Message(Rml::Log::LT_ERROR, "Failed to initialize Vulkan render interface");
@@ -185,11 +221,7 @@ void Backend::Shutdown()
 
 	RmlDX12::Shutdown(data->render_interface);
 
-	if (data->render_interface)
-	{
-		delete data->render_interface;	
-		data->render_interface=nullptr;
-	}
+	data->render_interface.reset();
 
 	SDL_DestroyWindow(data->window);
 
@@ -207,7 +239,7 @@ Rml::SystemInterface* Backend::GetSystemInterface()
 Rml::RenderInterface* Backend::GetRenderInterface()
 {
 	RMLUI_ASSERT(data);
-	return data->render_interface;
+	return data->render_interface.get();
 }
 
 static bool WaitForValidSwapchain()
@@ -357,4 +389,7 @@ void Backend::PresentFrame()
 	RMLUI_ASSERT(data);
 	RMLUI_ASSERT(data->render_interface);
 	data->render_interface->EndFrame();
+
+	// Optional, used to mark frames during performance profiling.
+	RMLUI_FrameMark;
 }

@@ -1,31 +1,3 @@
-/*
- * This source file is part of RmlUi, the HTML/CSS Interface Middleware
- *
- * For the latest information, see http://github.com/mikke89/RmlUi
- *
- * Copyright (c) 2008-2010 CodePoint Ltd, Shift Technology Ltd
- * Copyright (c) 2019-2023 The RmlUi Team, and contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "RmlUi_Renderer_GL3.h"
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/DecorationTypes.h>
@@ -1864,7 +1836,7 @@ void RenderInterface_GL3::RenderFilters(Rml::Span<const Rml::CompiledFilterHandl
 			glDisable(GL_BLEND);
 
 			const GLint uniform_location = program_data->uniforms.Get(ProgramId::ColorMatrix, UniformId::ColorMatrix);
-			constexpr bool transpose = std::is_same<decltype(filter.color_matrix), Rml::RowMajorMatrix4f>::value;
+			constexpr bool transpose = std::is_same_v<decltype(filter.color_matrix), Rml::RowMajorMatrix4f>;
 			glUniformMatrix4fv(uniform_location, 1, transpose, filter.color_matrix.data());
 
 			const Gfx::FramebufferData& source = render_layers.GetPostprocessPrimary();
@@ -2222,11 +2194,11 @@ bool RenderInterface_GL3::CaptureScreen(int& width, int& height, int& num_compon
 bool RmlGL3::Initialize(Rml::String* out_message)
 {
 #if defined(RMLUI_PLATFORM_EMSCRIPTEN)
-    if (out_message)
-        *out_message = "Started Emscripten WebGL renderer.";
+	if (out_message)
+		*out_message = "Started Emscripten WebGL renderer.";
 #elif defined(__ANDROID__)
-    if (out_message)
-        *out_message = "Started OpenGL ES 3 renderer.";
+	if (out_message)
+		*out_message = "Started OpenGL ES 3 renderer.";
 #elif !defined RMLUI_GL3_CUSTOM_LOADER
 	const int gl_version = gladLoaderLoadGL();
 	if (gl_version == 0)
