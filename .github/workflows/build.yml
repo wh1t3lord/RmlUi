@@ -29,7 +29,7 @@ jobs:
           - cmake_options: -DRMLUI_BACKEND=GLFW_VK -DCMAKE_BUILD_TYPE=Debug -DRMLUI_VK_DEBUG=ON -DRMLUI_PRECOMPILED_HEADERS=OFF
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Dependencies
       run: |-
@@ -72,7 +72,7 @@ jobs:
           - cmake_options: -DRMLUI_BACKEND=native -DCMAKE_BUILD_TYPE=Debug -DRMLUI_VK_DEBUG=ON
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Dependencies
         run: |-
@@ -102,7 +102,7 @@ jobs:
           - cmake_options: -DRMLUI_BACKEND=GLFW_GL2
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Dependencies
       run: brew install lua sdl2 sdl2_image glfw
@@ -140,7 +140,7 @@ jobs:
             build_type: Debug
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Dependencies
       run: C:\vcpkg\vcpkg install freetype[core] sdl3[core,vulkan] sdl3-image[core] glfw3 lua[core] luajit
@@ -163,7 +163,7 @@ jobs:
       MSYSTEM: MINGW64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Dependencies
         run: |-
@@ -187,7 +187,7 @@ jobs:
   Emscripten:
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Dependencies
       run: |-
