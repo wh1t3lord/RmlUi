@@ -41,15 +41,25 @@ RendererExtensions::Image RendererExtensions::CaptureScreen()
 	int viewport[4] = {}; // x, y, width, height
 	glGetIntegerv(GL_VIEWPORT, viewport);
 
-		bool status = p_render_interface->CaptureScreen(img.width, img.height, img.num_components, img.row_pitch, p_image_data, image_data_size);
-		RMLUI_ASSERT(status && "failed to make a screenshot (some variants why: driver failure, early calling, OS failure)");
+	Image image;
+	image.num_components = 3;
+	image.width = viewport[2];
+	image.height = viewport[3];
 
-		if (!status)
-			return Image();
+	if (image.width < 1 || image.height < 1)
+		return Image();
 
-		img.data = Rml::UniquePtr<Rml::byte[]>(p_image_data);
+	const int byte_size = image.width * image.height * image.num_components;
+	image.data = Rml::UniquePtr<Rml::byte[]>(new Rml::byte[byte_size]);
 
-		return img;
+	glReadPixels(0, 0, image.width, image.height, GL_RGB, GL_UNSIGNED_BYTE, image.data.get());
+
+	bool result = true;
+	GLenum err;
+	while ((err = glGetError()) != GL_NO_ERROR)
+	{
+		result = false;
+		Rml::Log::Message(Rml::Log::LT_ERROR, "Could not capture screenshot, got GL error: 0x%x", err);
 	}
 
 	if (!result)
