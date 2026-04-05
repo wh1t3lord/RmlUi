@@ -10,13 +10,11 @@
 #define LODEPNG_NO_COMPILE_CPP
 #include <lodepng.h>
 
-bool CaptureScreenshot(Rml::RenderInterface* p_render_interface, const Rml::String& filename, int clip_width)
+bool CaptureScreenshot(const Rml::String& filename, int clip_width)
 {
-	RMLUI_ASSERT(p_render_interface && "expected to be valid pointer!");
-
 	using Image = RendererExtensions::Image;
 
-	Image image_orig = RendererExtensions::CaptureScreen(p_render_interface);
+	Image image_orig = RendererExtensions::CaptureScreen();
 
 	if (!image_orig.data)
 	{
@@ -35,42 +33,22 @@ bool CaptureScreenshot(Rml::RenderInterface* p_render_interface, const Rml::Stri
 	image.data = Rml::UniquePtr<Rml::byte[]>(new Rml::byte[image.width * image.height * image.num_components]);
 
 	const int c = image.num_components;
-
-	if (image_orig.row_pitch > 0)
+	for (int y = 0; y < image.height; y++)
 	{
-		// handles DirectX based images
-		const int src_row_pitch = image_orig.row_pitch; 
-		const int dst_row_pitch = image.width * image.num_components;
+		const int flipped_y = image_orig.height - y - 1;
 
-		for (int y = 0; y < image.height; y++)
+		const int yb = y * image.width * c;
+		const int yb_orig = flipped_y * image_orig.width * c;
+		const int wb = image.width * c;
+
+		for (int xb = 0; xb < wb; xb++)
 		{
-			// Use actual row pitch for source
-			const Rml::byte* src_row = image_orig.data.get() + y * src_row_pitch;
-			Rml::byte* dst_row = image.data.get() + y * dst_row_pitch;
-
-			memcpy(dst_row, src_row, dst_row_pitch);
+			image.data[yb + xb] = image_orig.data[yb_orig + xb];
 		}
 	}
-	else
-	{
-		for (int y = 0; y < image.height; y++)
-		{
-			const int flipped_y = image_orig.height - y - 1;
 
-			const int yb = y * image.width * c;
-			const int yb_orig = flipped_y * image_orig.width * c;
-			const int wb = image.width * c;
-
-			for (int xb = 0; xb < wb; xb++)
-			{
-				image.data[yb + xb] = image_orig.data[yb_orig + xb];
-			}
-		}
-	}
-	
 	const Rml::String output_path = GetCaptureOutputDirectory() + "/" + filename;
-	unsigned int lodepng_result = lodepng_encode32_file(output_path.c_str(), image.data.get(), image.width, image.height);
-
+	unsigned int lodepng_result = lodepng_encode24_file(output_path.c_str(), image.data.get(), image.width, image.height);
 	if (lodepng_result)
 	{
 		Rml::Log::Message(Rml::Log::LT_ERROR, "Could not write the captured screenshot to %s: %s", output_path.c_str(),
@@ -109,7 +87,7 @@ ComparisonResult CompareScreenToPreviousCapture(Rml::RenderInterface* render_int
 	}
 	RMLUI_ASSERT(w_ref > 0 && h_ref > 0 && data_ref);
 
-	Image screen = RendererExtensions::CaptureScreen(render_interface);
+	Image screen = RendererExtensions::CaptureScreen();
 	if (!screen.data)
 	{
 		ComparisonResult result;
