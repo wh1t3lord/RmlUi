@@ -1,13 +1,6 @@
 #pragma once
 
-#ifndef RMLUI_BACKENDS_RENDERER_DX12_H
-#define RMLUI_BACKENDS_RENDERER_DX12_H
-
 #include <RmlUi/Core/RenderInterface.h>
-
-/**
- * Include third-party dependencies.
- */
 
 #ifndef RMLUI_PLATFORM_WIN32
 	#error "DirectX 12 renderer only supported on Windows"
@@ -20,17 +13,10 @@
 
 enum class ProgramId;
 
-constexpr uint32_t _kRenderBackend_InvalidConstantBuffer_RootParameterIndex = std::numeric_limits<uint32_t>::max();
-constexpr uint8_t _kRenderBackend_MaxConstantBuffersPerShader = 3;
-
 class RenderLayerStack;
 namespace Gfx {
 struct ProgramData;
 struct FramebufferData;
-
-#if RMLUI_RENDER_BACKEND_FIELD_IGNORE_RENDERER_INVALID_STATES == 1
-enum RenderState;
-#endif
 } // namespace Gfx
 
 namespace Backend {
@@ -38,20 +24,11 @@ struct RmlRenderInitInfo;
 struct RmlRendererSettings;
 } // namespace Backend
 
-/**
- * DirectX 12 render interface implementation for RmlUi
- * @author wh1t3lord (https://github.com/wh1t3lord)
- */
-
 class RenderInterface_DX12 : public Rml::RenderInterface {
 private:
 	static constexpr uint32_t InvalidConstantBuffer_RootParameterIndex = std::numeric_limits<uint32_t>::max();
 	static constexpr uint8_t MaxConstantBuffersPerShader = 3;
 	static constexpr size_t NumPrograms = 23;
-
-	static constexpr size_t kDebugMB_BA = (RMLUI_RENDER_BACKEND_FIELD_VIDEOMEMORY_FOR_BUFFER_ALLOCATION / 1024) / 1024;
-	static constexpr size_t kDebugMB_TA = (RMLUI_RENDER_BACKEND_FIELD_VIDEOMEMORY_FOR_TEXTURE_ALLOCATION / 1024) / 1024;
-#endif
 
 public:
 	struct GraphicsAllocationInfo {
@@ -78,7 +55,6 @@ public:
 
 #ifdef RMLUI_DX_DEBUG
 		/// @brief returns debug resource name. Implementation of this method exists only when DEBUG is enabled for this project
-		/// @param  void, nothing
 		/// @return debug resource name when the source string is passed in LoadTexture method
 		const Rml::String& Get_ResourceName() const { return m_debug_resource_name; }
 
@@ -86,7 +62,6 @@ public:
 		/// @param resource_name this string is getting from LoadTexture method from source argument
 		void Set_ResourceName(const Rml::String& resource_name) { m_debug_resource_name = resource_name; }
 #endif
-		}
 
 		// this method calls texture manager! don't call it manually because you must ensure that you freed virtual block if it had
 		void Destroy()
@@ -108,30 +83,18 @@ public:
 					if (auto* underlying_resource = p_committed_resource->GetResource())
 						underlying_resource->Release();
 
-						if (p_committed_resource->GetResource())
-						{
-							p_committed_resource->GetResource()->Release();
-						}
-
 					p_committed_resource->Release();
 				}
 
 				m_info = GraphicsAllocationInfo();
 				m_p_resource = nullptr;
 			}
-#ifdef RMLUI_DX_DEBUG
-		}
-#endif
 		}
 
 		const OffsetAllocator::Allocation& Get_Allocation_DescriptorHeap() const noexcept { return m_allocation_descriptor_heap; }
 		void Set_Allocation_DescriptorHeap(const OffsetAllocator::Allocation& allocation) noexcept { m_allocation_descriptor_heap = allocation; }
 
 	private:
-#ifdef RMLUI_DX_DEBUG
-		bool m_is_destroyed;
-#endif
-
 		GraphicsAllocationInfo m_info;
 		OffsetAllocator::Allocation m_allocation_descriptor_heap;
 		void* m_p_resource = nullptr; // placed or committed (CreateResource from D3D12MA)
@@ -296,12 +259,8 @@ public:
 
 		int Alloc(GraphicsAllocationInfo& info, size_t size, size_t alignment = 0);
 
-		/// @brief suppose we have a such situtation that user goes to really high load document page and it was allocated too much blocks and then
-		/// all its sessions are in low loaded documents and it means that we will have in that session block that weren't freed and thus we don't
-		/// spend that memory for textures or for anything else, so if we have blocks that aren't in use it is better to free them
 		void TryToFreeAvailableBlock();
 
-	private:
 		uint32_t m_descriptor_increment_size_srv_cbv_uav;
 		size_t m_size_for_allocation_in_bytes;
 		size_t m_size_alignment_in_bytes;
@@ -325,9 +284,6 @@ public:
 		TextureMemoryManager();
 		~TextureMemoryManager();
 
-		/// @brief
-		/// @param p_allocator from main manager
-		/// @param size_for_placed_heap by default it is 4Mb in bytes
 		void Initialize(D3D12MA::Allocator* p_allocator, OffsetAllocator::Allocator* p_offset_allocator_for_descriptor_heap_srv_cbv_uav,
 			ID3D12Device* p_device, ID3D12GraphicsCommandList* p_copy_command_list, ID3D12GraphicsCommandList* p_backend_command_list,
 			ID3D12CommandAllocator* p_copy_allocator_command, ID3D12DescriptorHeap* p_descriptor_heap_srv,
@@ -353,18 +309,14 @@ public:
 		);
 
 		void Free_Texture(TextureHandleType* type);
-
 		void Free_Texture(Gfx::FramebufferData* p_texture);
-
 		void Free_Texture(TextureHandleType* p_allocated_texture_with_class, bool is_rt, D3D12MA::VirtualAllocation& allocation);
 
 		bool Is_Initialized() const;
 
 	private:
 		bool CanAllocate(size_t total_memory_for_allocation, D3D12MA::VirtualBlock* p_block);
-
 		bool CanBePlacedResource(size_t total_memory_for_allocation);
-
 		// don't use it for MSAA texture because we don't implement a such feature!
 		bool CanBeSmallResource(size_t base_memory);
 
@@ -373,18 +325,15 @@ public:
 
 		void Alloc_As_Committed(size_t base_memory, size_t total_memory, D3D12_RESOURCE_DESC& desc, TextureHandleType* p_impl,
 			const Rml::byte* p_data);
-
 		// we don't upload to GPU because it is render target and needed to be written
 		void Alloc_As_Committed(size_t base_memory, size_t total_memory, D3D12_RESOURCE_DESC& desc, D3D12_RESOURCE_STATES initial_state,
 			TextureHandleType* p_texture, Gfx::FramebufferData* p_impl);
-
 		void Alloc_As_Placed(size_t base_memory, size_t total_memory, D3D12_RESOURCE_DESC& desc, TextureHandleType* p_impl, const Rml::byte* p_data);
 
 		void Upload(bool is_committed, TextureHandleType* p_texture_handle, const D3D12_RESOURCE_DESC& desc, const Rml::byte* p_data,
 			ID3D12Resource* p_impl);
 
 		size_t BytesPerPixel(DXGI_FORMAT format);
-
 		size_t BitsPerPixel(DXGI_FORMAT format);
 
 		Rml::Pair<ID3D12Heap*, D3D12MA::VirtualBlock*> Create_HeapPlaced(size_t size_for_creation);
@@ -392,7 +341,6 @@ public:
 		D3D12_CPU_DESCRIPTOR_HANDLE Alloc_RenderTargetResourceView(ID3D12Resource* p_resource, D3D12MA::VirtualAllocation* p_allocation);
 		D3D12_CPU_DESCRIPTOR_HANDLE Alloc_DepthStencilResourceView(ID3D12Resource* p_resource, D3D12MA::VirtualAllocation* p_allocation);
 
-	private:
 		size_t m_size_for_placed_heap;
 		/// @brief limit size that we define as acceptable. On 4 Mb it is enough for placing 1 Mb but higher it is bad. 1 Mb occupies 25% from 4 Mb
 		/// and that means that m_size_limit_for_being_placed will be determined as 25% * m_size_for_placed_heap;
@@ -468,10 +416,8 @@ public:
 		const Gfx::FramebufferData& EnsureFramebufferPostprocess(int index);
 
 		void CreateFramebuffer(Gfx::FramebufferData* p_result, int width, int height, int sample_count, bool is_depth_stencil);
-
 		void DestroyFramebuffer(Gfx::FramebufferData* p_data);
 
-	private:
 		unsigned char m_msaa_sample_count;
 		int m_width, m_height;
 		// The number of active layers is manually tracked since we re-use the framebuffers stored in the fb_layers stack.
@@ -487,8 +433,6 @@ public:
 public:
 	RenderInterface_DX12(void* p_window_handle, const Backend::RmlRendererSettings& settings);
 	~RenderInterface_DX12();
-
-	// using CreateSurfaceCallback = bool (*)(VkInstance instance, VkSurfaceKHR* out_surface);
 
 	// Returns true if the renderer was successfully constructed.
 	explicit operator bool() const;
@@ -543,9 +487,6 @@ public:
 	static constexpr Rml::TextureHandle TextureEnableWithoutBinding = Rml::TextureHandle(-1);
 	// Can be passed to RenderGeometry() to leave the bound texture and used program unchanged.
 	static constexpr Rml::TextureHandle TexturePostprocess = Rml::TextureHandle(-2);
-
-	void Shutdown() noexcept;
-	void Initialize(void) noexcept;
 
 	bool IsSwapchainValid() noexcept;
 	void RecreateSwapchain() noexcept;
@@ -612,13 +553,11 @@ private:
 	void Create_Resource_Pipeline_Gradient();
 	void Create_Resource_Pipeline_Creation();
 	void Create_Resource_Pipeline_Passthrough();
-	void Create_Resource_Pipeline_Passthrough_ColorMask();
 	void Create_Resource_Pipeline_Passthrough_NoBlend();
 	void Create_Resource_Pipeline_ColorMatrix();
 	void Create_Resource_Pipeline_BlendMask();
 	void Create_Resource_Pipeline_Blur();
 	void Create_Resource_Pipeline_DropShadow();
-	void Create_Resource_Pipeline_Count();
 
 	void Create_Resource_DepthStencil();
 	void Destroy_Resource_DepthStencil();
@@ -628,7 +567,6 @@ private:
 	bool CheckTearingSupport() noexcept;
 
 	IDXGIAdapter* Get_Adapter(bool is_use_warp) noexcept;
-
 	void PrintAdapterDesc(IDXGIAdapter* p_adapter);
 
 	void SetScissor(Rml::Rectanglei region, bool vertically_flip = false);
@@ -643,7 +581,6 @@ private:
 	void Free_Texture(TextureHandleType* p_handle);
 
 	void Update_PendingForDeletion_Geometry();
-	void Update_PendingForDeletion_Texture();
 
 	void BlitLayerToPostprocessPrimary(Rml::LayerHandle layer_id);
 
@@ -672,9 +609,6 @@ private:
 
 	ID3D12Resource* GetResourceFromFramebufferData(const Gfx::FramebufferData& data);
 
-private:
-	bool m_is_full_initialization;
-	bool m_is_shutdown_called;
 	bool m_is_use_vsync;
 	bool m_is_use_tearing;
 	bool m_is_scissor_was_set;
@@ -698,7 +632,6 @@ private:
 	UINT m_stencil_ref_value;
 	// For debug builds: D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, otherwise 0.
 	UINT m_default_shader_flags;
-	std::bitset<RMLUI_RENDER_BACKEND_FIELD_MAXNUMPROGRAMS> m_program_state_transform_dirty;
 	ID3D12Device* m_p_device;
 	ID3D12CommandQueue* m_p_command_queue;
 	ID3D12CommandQueue* m_p_copy_queue;
@@ -725,7 +658,6 @@ private:
 
 	D3D12MA::Allocator* m_p_allocator;
 	OffsetAllocator::Allocator* m_p_offset_allocator_for_descriptor_heap_shaders;
-	// D3D12MA::Allocation* m_p_constant_buffers[kSwapchainBackBufferCount];
 	// where user wants to render rmlui final image
 	D3D12_CPU_DESCRIPTOR_HANDLE* m_p_user_rtv_present;
 	// as well as rtv just dsv
@@ -745,11 +677,7 @@ private:
 	// per object (per draw)
 	Rml::Array<Rml::Vector<ConstantBufferType>, RMLUI_RENDER_BACKEND_FIELD_SWAPCHAIN_BACKBUFFER_COUNT> m_constantbuffers;
 	Rml::Vector<GeometryHandleType*> m_pending_for_deletion_geometry;
-	// todo: delete this if final implementation doesn't use this
-	Rml::Vector<TextureHandleType*> m_pending_for_deletion_textures;
-	// ConstantBufferType m_constantbuffer;
 
-	// this represents user's data from initialization structure about multisampling features
 	DXGI_SAMPLE_DESC m_desc_sample;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_handle_shaders;
 	BufferMemoryManager m_manager_buffer;
@@ -760,7 +688,6 @@ private:
 	RenderLayerStack m_manager_render_layer;
 };
 
-// forward declaration
 namespace Backend {
 struct RmlRendererSettings {
 	bool vsync;

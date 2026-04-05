@@ -136,7 +136,6 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, SDL_WINDOWPOS_CENTERED);
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, int(width * window_size_scale));
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, int(height * window_size_scale));
-	SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN, false);
 	SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, allow_resize);
 	SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIGH_PIXEL_DENSITY_BOOLEAN, true);
 	SDL_Window* window = SDL_CreateWindowWithProperties(props);
@@ -198,11 +197,9 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 		SDL_DestroyWindow(window);
 		data.reset();
 		SDL_Quit();
-		Rml::Log::Message(Rml::Log::LT_ERROR, "Failed to initialize Vulkan render interface");
 		return false;
 	}
 
-	data->system_interface.SetWindow(window);
 	data->render_interface->SetViewport(width, height);
 
 	return true;
@@ -211,15 +208,6 @@ bool Backend::Initialize(const char* window_name, int width, int height, bool al
 void Backend::Shutdown()
 {
 	RMLUI_ASSERT(data);
-	RMLUI_ASSERT(data->render_interface);
-
-	if (data->p_default_pointer)
-	{
-		delete data->p_default_pointer;
-		data->p_default_pointer = nullptr;
-	}
-
-	RmlDX12::Shutdown(data->render_interface);
 
 	data->render_interface.reset();
 
@@ -379,7 +367,6 @@ void Backend::RequestExit()
 void Backend::BeginFrame()
 {
 	RMLUI_ASSERT(data);
-	RMLUI_ASSERT(data->render_interface);
 	data->render_interface->BeginFrame();
 	data->render_interface->Clear();
 }
@@ -387,7 +374,6 @@ void Backend::BeginFrame()
 void Backend::PresentFrame()
 {
 	RMLUI_ASSERT(data);
-	RMLUI_ASSERT(data->render_interface);
 	data->render_interface->EndFrame();
 
 	// Optional, used to mark frames during performance profiling.
