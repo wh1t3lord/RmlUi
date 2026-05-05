@@ -1941,6 +1941,10 @@ void RenderInterface_VK::Create_Shaders() noexcept
 	static_assert(sizeof(m_shaders) / sizeof(m_shaders[0]) >= sizeof(shaders) / sizeof(shaders[0]),
 		"something is wrong, different amount of shaders!");
 
+	// absolutely lowest probability (why we need so much shaders it is better then merge all shaders file into one and use some kind of uber-shader
+	// approach in order to reduce amount of shaders tbh?) of that happening but for users let it be as reminder
+	static_assert(sizeof(m_shaders) / sizeof(m_shaders[0]) <= std::numeric_limits<unsigned char>::max(), "type overflow replace type in code!");
+
 	unsigned char max_size = static_cast<unsigned char>((sizeof(m_shaders) / sizeof(m_shaders[0])));
 	unsigned char iter = 0;
 
