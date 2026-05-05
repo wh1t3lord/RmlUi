@@ -1,5 +1,4 @@
 #include "RmlUi_Renderer_VK.h"
-#include "RmlUi_Vulkan/ShadersCompiledSPV.h"
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/FileInterface.h>
 #include <RmlUi/Core/Log.h>

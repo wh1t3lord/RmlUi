@@ -702,7 +702,7 @@ private:
 	Rml::Vector<VkFramebuffer> m_swapchain_frame_buffers;
 	Rml::Vector<VkImage> m_swapchain_images;
 	Rml::Vector<VkImageView> m_swapchain_image_views;
-	VkShaderModule m_shaders[12];
+	VkShaderModule m_shaders[static_cast<int>(eVKShaderID::total_size)];
 	Rml::Array<Rml::Vector<texture_data_t*>, kSwapchainBackBufferCount> m_pending_for_deletion_textures_by_frames;
 
 	// vma handles that thing, so there's no need for frame splitting

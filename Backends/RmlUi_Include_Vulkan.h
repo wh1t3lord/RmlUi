@@ -24,6 +24,7 @@
 #include "RmlUi_Vulkan/vulkan.h"
 // Always include "vulkan.h" first, this comment prevents clang-format from reordering the includes.
 #include "RmlUi_Vulkan/vk_mem_alloc.h"
+#include "RmlUi_Vulkan/ShadersCompiledSPV.h"
 
 #if defined _MSC_VER
 	#pragma warning(pop)
