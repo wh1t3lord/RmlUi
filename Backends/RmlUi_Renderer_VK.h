@@ -81,7 +81,6 @@ public:
 
 private:
 	enum class shader_type_t : int { Vertex, Fragment, Unknown = -1 };
-	enum class shader_id_t : int { Vertex, Fragment_WithoutTextures, Fragment_WithTextures };
 
 	struct shader_vertex_user_data_t {
 		// Member objects are order-sensitive to match shader.
@@ -703,7 +702,7 @@ private:
 	Rml::Vector<VkFramebuffer> m_swapchain_frame_buffers;
 	Rml::Vector<VkImage> m_swapchain_images;
 	Rml::Vector<VkImageView> m_swapchain_image_views;
-	Rml::Vector<VkShaderModule> m_shaders;
+	VkShaderModule m_shaders[12];
 	Rml::Array<Rml::Vector<texture_data_t*>, kSwapchainBackBufferCount> m_pending_for_deletion_textures_by_frames;
 
 	// vma handles that thing, so there's no need for frame splitting

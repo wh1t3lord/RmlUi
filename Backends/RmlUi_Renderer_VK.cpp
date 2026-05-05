@@ -247,34 +247,34 @@ void RenderInterface_VK::RenderGeometry(Rml::CompiledGeometryHandle geometry, Rm
 	/*
 	if (m_is_use_stencil_pipeline)
 	{
-		vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_p_pipeline_stencil_for_region_where_geometry_will_be_drawn);
+	    vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_p_pipeline_stencil_for_region_where_geometry_will_be_drawn);
 	}
 	else
 	{
-		if (p_texture)
-		{
-			if (m_is_apply_to_regular_geometry_stencil)
-			{
-				vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_with_textures);
-			}
-			else
-			{
-				vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_p_pipeline_with_textures);
-			}
-		}
-		else
-		{
-			if (m_is_apply_to_regular_geometry_stencil)
-			{
-				vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures);
-			}
-			else
-			{
-				vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_p_pipeline_without_textures);
-			}
-		}
+	    if (p_texture)
+	    {
+	        if (m_is_apply_to_regular_geometry_stencil)
+	        {
+	            vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+	                m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_with_textures);
+	        }
+	        else
+	        {
+	            vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_p_pipeline_with_textures);
+	        }
+	    }
+	    else
+	    {
+	        if (m_is_apply_to_regular_geometry_stencil)
+	        {
+	            vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+	                m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures);
+	        }
+	        else
+	        {
+	            vkCmdBindPipeline(m_p_current_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_p_pipeline_without_textures);
+	        }
+	    }
 	}
 	*/
 
@@ -555,10 +555,10 @@ Rml::TextureHandle RenderInterface_VK::CreateTexture(Rml::Span<const Rml::byte> 
 	int width = dimensions.x;
 	int height = dimensions.y;
 
-	RMLUI_ASSERT(width>0 && "invalid width");
-	RMLUI_ASSERT(height>0 && "invalid height");
+	RMLUI_ASSERT(width > 0 && "invalid width");
+	RMLUI_ASSERT(height > 0 && "invalid height");
 
-	Rml::TextureHandle temp_result=0;
+	Rml::TextureHandle temp_result = 0;
 
 	if (source.empty())
 		return temp_result;
@@ -1050,7 +1050,7 @@ void RenderInterface_VK::Initialize_PhysicalDevice(VkPhysicalDeviceProperties& o
 
 	RMLUI_VK_ASSERTMSG(selected_physical_device, "there's no suitable physical device for rendering, abort this application");
 
-	if (selected_physical_device==nullptr)
+	if (selected_physical_device == nullptr)
 		return;
 
 	m_p_physical_device = selected_physical_device->m_p_physical_device;
@@ -1708,7 +1708,8 @@ void RenderInterface_VK::CollectPhysicalDevices(PhysicalDeviceWrapperList& out_p
 const RenderInterface_VK::PhysicalDeviceWrapper* RenderInterface_VK::ChoosePhysicalDevice(const PhysicalDeviceWrapperList& physical_devices,
 	VkPhysicalDeviceType device_type) noexcept
 {
-	RMLUI_ASSERT(physical_devices.empty() == false && "you must have one videocard at least or early calling of this method, try call this after CollectPhysicalDevices");
+	RMLUI_ASSERT(physical_devices.empty() == false &&
+		"you must have one videocard at least or early calling of this method, try call this after CollectPhysicalDevices");
 
 	for (const auto& device : physical_devices)
 	{
@@ -1922,18 +1923,29 @@ void RenderInterface_VK::Create_Shaders() noexcept
 
 	struct shader_data_t {
 		const uint32_t* m_data;
-		size_t m_data_size;
-		VkShaderStageFlagBits m_shader_type;
+		const size_t m_data_size;
+		const VkShaderStageFlagBits m_shader_type;
 	};
 
-	const Rml::Vector<shader_data_t> shaders = {
-		{reinterpret_cast<const uint32_t*>(shader_vert), sizeof(shader_vert), VK_SHADER_STAGE_VERTEX_BIT},
+	// let it be on stack don't use constexpr because it will grow compiled library size
+	shader_data_t shaders[] = {
+		{reinterpret_cast<const uint32_t*>(shader_vert_main), sizeof(shader_vert_main), VK_SHADER_STAGE_VERTEX_BIT},
 		{reinterpret_cast<const uint32_t*>(shader_frag_color), sizeof(shader_frag_color), VK_SHADER_STAGE_FRAGMENT_BIT},
 		{reinterpret_cast<const uint32_t*>(shader_frag_texture), sizeof(shader_frag_texture), VK_SHADER_STAGE_FRAGMENT_BIT},
 	};
 
+	static_assert(sizeof(m_shaders) / sizeof(m_shaders[0]) >= sizeof(shaders) / sizeof(shaders[0]),
+		"something is wrong, different amount of shaders!"
+	);
+
+	unsigned char max_size = static_cast<unsigned char>((sizeof(m_shaders) / sizeof(m_shaders[0])));
+	unsigned char iter = 0;
+
 	for (const shader_data_t& shader_data : shaders)
 	{
+		if (iter >= max_size)
+			break;
+
 		VkShaderModuleCreateInfo info = {};
 		info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 		info.pCode = shader_data.m_data;
@@ -1944,7 +1956,8 @@ void RenderInterface_VK::Create_Shaders() noexcept
 
 		RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "[Vulkan] failed to vkCreateShaderModule");
 
-		m_shaders.push_back(p_module);
+		m_shaders[iter] = p_module;
+		++iter;
 	}
 }
 
@@ -2194,7 +2207,7 @@ void RenderInterface_VK::Create_Pipelines() noexcept
 	info_depth.front = info_depth.back;
 
 	status = vkCreateGraphicsPipelines(m_p_device, nullptr, 1, &info, nullptr,
-		&m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_with_textures);
+	    &m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_with_textures);
 	RMLUI_VK_ASSERTMSG(status == VkResult::VK_SUCCESS, "failed to vkCreateGraphicsPipelines");
 
 	info_shader.module = m_shaders[static_cast<int>(shader_id_t::Fragment_WithoutTextures)];
@@ -2221,7 +2234,7 @@ void RenderInterface_VK::Create_Pipelines() noexcept
 	info_depth.front = info_depth.back;
 
 	status = vkCreateGraphicsPipelines(m_p_device, nullptr, 1, &info, nullptr,
-		&m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures);
+	    &m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures);
 	RMLUI_VK_ASSERTMSG(status == VkResult::VK_SUCCESS, "failed to vkCreateGraphicsPipelines");
 
 	info_color_blend_att.colorWriteMask = 0x0;
@@ -2270,7 +2283,7 @@ void RenderInterface_VK::Create_Pipelines() noexcept
 */
 }
 
-void RenderInterface_VK::Create_Pipeline_Color() 
+void RenderInterface_VK::Create_Pipeline_Color()
 {
 	VkPipelineInputAssemblyStateCreateInfo info_assembly_state = {};
 	info_assembly_state.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -2354,7 +2367,7 @@ void RenderInterface_VK::Create_Pipeline_Color()
 	info_shader.pNext = nullptr;
 	info_shader.pName = "main";
 	info_shader.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	info_shader.module = m_shaders[static_cast<int>(shader_id_t::Vertex)];
+	info_shader.module = m_shaders[static_cast<int>(shader_id_t::shader_vert_main)];
 
 	shaders_that_will_be_used_in_pipeline[0] = info_shader;
 
@@ -2842,7 +2855,7 @@ void RenderInterface_VK::Destroy_Pipelines() noexcept
 {
 	RMLUI_ASSERT(m_p_device && "must exist here");
 
-	if (m_p_device==nullptr)
+	if (m_p_device == nullptr)
 		return;
 
 	RMLUI_ASSERT(false && "todo: finish this");
