@@ -64,3 +64,18 @@
 #else
 	#define RMLUI_RENDER_BACKEND_FIELD_STAGING_BUFFER_CACHE_ENABLED 1
 #endif
+
+#ifndef RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_RENDERTARGET_COLOR_VAlUE
+	#define RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_RENDERTARGET_COLOR_VAlUE 0.0f, 0.0f, 0.0f, 1.0f
+#endif
+
+// specifies general (for all depth stencil textures that might be allocated by backend) depth value on clear operation (::Clear)
+#ifndef RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_DEPTHSTENCIL_DEPTH_VALUE
+	#define RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_DEPTHSTENCIL_DEPTH_VALUE 1.0f
+#endif
+
+// specifies general (for all depth stencil textures that might be allocated by backend) stencil value on clear operation
+// (::Clear)
+#ifndef RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_DEPTHSTENCIL_STENCIL_VALUE
+	#define RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_DEPTHSTENCIL_STENCIL_VALUE 0
+#endif

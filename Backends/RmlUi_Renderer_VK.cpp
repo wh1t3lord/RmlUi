@@ -776,22 +776,15 @@ void RenderInterface_VK::BeginFrame()
 
 	RMLUI_VK_ASSERTMSG(status == VkResult::VK_SUCCESS, "failed to vkBeginCommandBuffer");
 
-	VkClearValue for_filling_back_buffer_color;
-	VkClearValue for_stencil_depth;
-
-	for_stencil_depth.depthStencil = {1.0f, 0};
-	for_filling_back_buffer_color.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-
-	const VkClearValue p_color_rt[] = {for_filling_back_buffer_color, for_stencil_depth};
-
 	VkRenderPassBeginInfo info_pass = {};
 
 	info_pass.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	info_pass.pNext = nullptr;
 	info_pass.renderPass = m_p_render_pass;
 	info_pass.framebuffer = m_swapchain_frame_buffers[m_image_index];
-	info_pass.pClearValues = p_color_rt;
-	info_pass.clearValueCount = 2;
+	// method ::Clear is used for explicit state that handles clearing of current backbuffer and depthstencil textures
+	info_pass.pClearValues = nullptr;
+	info_pass.clearValueCount = 0;
 	info_pass.renderArea.offset.x = 0;
 	info_pass.renderArea.offset.y = 0;
 	info_pass.renderArea.extent.width = m_width;
@@ -818,6 +811,25 @@ void RenderInterface_VK::EndFrame()
 	Present();
 
 	m_p_current_command_buffer = nullptr;
+}
+
+void RenderInterface_VK::Clear()
+{
+	RMLUI_ASSERT(m_p_current_command_buffer);
+
+	if (m_p_current_command_buffer)
+	{
+		VkClearAttachment attaches[2];
+
+		attaches[0].clearValue.color = {{RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_RENDERTARGET_COLOR_VAlUE}};
+		attaches[0].colorAttachment = VK_IMAGE_ASPECT_COLOR_BIT;
+
+		attaches[1].clearValue = {
+			{RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_DEPTHSTENCIL_DEPTH_VALUE, RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_DEPTHSTENCIL_STENCIL_VALUE}};
+		attaches[1].colorAttachment = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+
+		vkCmdClearAttachments(m_p_current_command_buffer, 2, attaches, 0, nullptr);
+	}
 }
 
 void RenderInterface_VK::SetViewport(int width, int height)

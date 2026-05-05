@@ -42,6 +42,7 @@ public:
 	void EndFrame();
 
 	void SetViewport(int width, int height);
+	void Clear();
 	bool IsSwapchainValid();
 	void RecreateSwapchain();
 
