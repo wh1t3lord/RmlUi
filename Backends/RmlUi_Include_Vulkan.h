@@ -79,3 +79,15 @@
 #ifndef RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_DEPTHSTENCIL_STENCIL_VALUE
 	#define RMLUI_RENDER_BACKEND_FIELD_CLEAR_VALUE_DEPTHSTENCIL_STENCIL_VALUE 0
 #endif
+
+#ifdef RMLUI_DEBUG
+	#define RMLUI_VK_ASSERTMSG(statement, msg) RMLUI_ASSERTMSG(statement, msg)
+
+	// Uncomment the following line to enable additional Vulkan debugging.
+	#define RMLUI_VK_DEBUG
+#else
+	#define RMLUI_VK_ASSERTMSG(statement, msg) static_cast<void>(statement)
+#endif
+
+// Your specified API version. Ideally, this will be dynamic in the future.
+#define RMLUI_VK_API_VERSION VK_API_VERSION_1_0

@@ -9,17 +9,7 @@
 
 #include "RmlUi_Include_Vulkan.h"
 
-#ifdef RMLUI_DEBUG
-	#define RMLUI_VK_ASSERTMSG(statement, msg) RMLUI_ASSERTMSG(statement, msg)
-
-	// Uncomment the following line to enable additional Vulkan debugging.
-	#define RMLUI_VK_DEBUG
-#else
-	#define RMLUI_VK_ASSERTMSG(statement, msg) static_cast<void>(statement)
-#endif
-
-// Your specified API version. Ideally, this will be dynamic in the future.
-#define RMLUI_VK_API_VERSION VK_API_VERSION_1_0
+enum class ProgramId;
 
 namespace Gfx {
 struct FramebufferData;
@@ -596,6 +586,18 @@ private:
 	void Create_DescriptorSets() noexcept;
 	void Create_Samplers() noexcept;
 	void Create_Pipelines() noexcept;
+
+	void Create_Pipeline_Color();
+	void Create_Pipeline_Texture();
+	void Create_Pipeline_Gradient();
+	void Create_Pipeline_Creation();
+	void Create_Pipeline_Passthrough();
+	void Create_Pipeline_Passthrough_NoBlend();
+	void Create_Pipeline_ColorMatrix();
+	void Create_Pipeline_BlendMask();
+	void Create_Pipeline_Blur();
+	void Create_Pipeline_DropShadow();
+
 	void Create_RenderPass() noexcept;
 
 	void Create_SwapchainFrameBuffers(const VkExtent2D& real_render_image_size) noexcept;
@@ -634,6 +636,8 @@ private:
 	void Submit() noexcept;
 	void Present() noexcept;
 
+	void UseProgram(ProgramId id);
+
 	VkFormat Get_SupportedDepthFormat();
 
 private:
@@ -664,11 +668,13 @@ private:
 	VkDescriptorSetLayout m_p_descriptor_set_layout_vertex_transform;
 	VkDescriptorSetLayout m_p_descriptor_set_layout_texture;
 	VkPipelineLayout m_p_pipeline_layout;
+	/*
 	VkPipeline m_p_pipeline_with_textures;
 	VkPipeline m_p_pipeline_without_textures;
 	VkPipeline m_p_pipeline_stencil_for_region_where_geometry_will_be_drawn;
 	VkPipeline m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_with_textures;
 	VkPipeline m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures;
+	*/
 	VkDescriptorSet m_p_descriptor_set;
 	VkRenderPass m_p_render_pass;
 	VkSampler m_p_sampler_linear;
