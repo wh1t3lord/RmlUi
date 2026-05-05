@@ -106,6 +106,8 @@ RenderInterface_VK::RenderInterface_VK() :
 	}
 
 	m_pending_for_deletion_geometries.reserve(128);
+
+	std::memset(m_shaders, 0, sizeof(m_shaders));
 }
 
 RenderInterface_VK::~RenderInterface_VK() {}
@@ -2367,11 +2369,11 @@ void RenderInterface_VK::Create_Pipeline_Color()
 	info_shader.pNext = nullptr;
 	info_shader.pName = "main";
 	info_shader.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	info_shader.module = m_shaders[static_cast<int>(shader_id_t::shader_vert_main)];
+	info_shader.module = m_shaders[static_cast<int>(eVKShaderID::shader_vert_main)];
 
 	shaders_that_will_be_used_in_pipeline[0] = info_shader;
 
-	info_shader.module = m_shaders[static_cast<int>(shader_id_t::Fragment_WithTextures)];
+	info_shader.module = m_shaders[static_cast<int>(eVKShaderID::shader_frag_texture)];
 	info_shader.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	shaders_that_will_be_used_in_pipeline[1] = info_shader;

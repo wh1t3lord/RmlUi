@@ -1,5 +1,5 @@
 // RmlUi SPIR-V Vulkan shaders compiled using command: 'python compile_shaders.py'. Do not edit manually.
-// Compilation date: 2026-05-05 13:09:29
+// Compilation date: 2026-05-05 13:19:05
 
 #include <stdint.h>
 
@@ -184,5 +184,6 @@ enum class eVKShaderID : int
 {
 shader_frag_color,
 shader_frag_texture,
-shader_vert_main
+shader_vert_main,
+total_size
 };

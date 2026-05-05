@@ -51,7 +51,9 @@ with open(out_path,'w') as result_file:
 	total_size = len(variable_names)
 	for i, variable_name in enumerate(variable_names):
 		if i == total_size - 1:
-			result_file.write(f'{variable_name}\n')
-			result_file.write('};')
+			result_file.write(f'{variable_name},\n')
+			result_file.write(f'total_size\n')
 		else:
 			result_file.write(f'{variable_name},\n')
+
+	result_file.write('};')
