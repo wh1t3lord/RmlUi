@@ -32,10 +32,12 @@ if(RMLUI_FONT_ENGINE_ENABLED)
 		message(STATUS "SVG sample disabled due to RMLUI_SVG_PLUGIN=OFF")
 	endif()
 
-	# Enable the IME sample only for Windows backends; no other platform backend is currently supported.
-	if(RMLUI_BACKEND MATCHES "^Win32")
+	# Enable the IME sample only for SDL or Windows backends; no other platform backend is currently supported.
+	if(RMLUI_BACKEND MATCHES "^Win32" OR (RMLUI_IME_SAMPLE_USE_NOTO_FONTS AND RMLUI_BACKEND MATCHES "^SDL"))
 		add_subdirectory("ime")
+	elseif (RMLUI_BACKEND MATCHES "^SDL")
+		message(STATUS "IME sample disabled - no Asian language fonts available, see RMLUI_IME_SAMPLE_USE_NOTO_FONTS")
 	else()
-		message(STATUS "IME sample disabled - only available with Win32 backends, see RMLUI_BACKEND")
+		message(STATUS "IME sample disabled - only available with SDL or Win32 backends, see RMLUI_BACKEND")
 	endif()
 endif()

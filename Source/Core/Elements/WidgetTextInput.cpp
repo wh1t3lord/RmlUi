@@ -1622,6 +1622,8 @@ void WidgetTextInput::SetKeyboardActive(bool active)
 
 float WidgetTextInput::GetLineHeight() const
 {
+	// This is rounded to improve the navigation experience in a multi-line text field. If it's not rounded then lines
+	// may move a single pixel for every line, which looks a bit jaggedy when moving up and down.
 	return Math::Round(parent->GetLineHeight());
 }
 

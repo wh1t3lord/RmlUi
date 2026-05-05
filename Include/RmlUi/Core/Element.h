@@ -668,6 +668,7 @@ private:
 	void AddChildrenToStackingContext(Vector<StackingContextChild>& stacking_children);
 	void AddToStackingContext(Vector<StackingContextChild>& stacking_children, bool is_flex_item, bool is_non_dom_element);
 	void DirtyStackingContext();
+	Element* ClosestStackingContextContainer();
 
 	void UpdateDefinition();
 
