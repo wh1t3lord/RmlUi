@@ -1924,27 +1924,30 @@ void RenderInterface_VK::Create_Shaders() noexcept
 	RMLUI_ASSERT(m_p_device && "you must initialize VkDevice before calling this method");
 
 	struct shader_data_t {
-		const uint32_t* m_data;
-		const size_t m_data_size;
-		const VkShaderStageFlagBits m_shader_type;
+		const uint32_t* m_data = nullptr;
+		size_t m_data_size = 0;
+		VkShaderStageFlagBits m_shader_type = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
 	};
 
 	// let it be on stack don't use constexpr because it will grow compiled library size
-	shader_data_t shaders[] = {
-		{reinterpret_cast<const uint32_t*>(shader_vert_main), sizeof(shader_vert_main), VK_SHADER_STAGE_VERTEX_BIT},
-		{reinterpret_cast<const uint32_t*>(shader_frag_color), sizeof(shader_frag_color), VK_SHADER_STAGE_FRAGMENT_BIT},
-		{reinterpret_cast<const uint32_t*>(shader_frag_texture), sizeof(shader_frag_texture), VK_SHADER_STAGE_FRAGMENT_BIT},
-	};
+	shader_data_t shaders[static_cast<int>(eVKShaderID::total_size)];
+	shaders[static_cast<int>(eVKShaderID::shader_vert_main)] = {reinterpret_cast<const uint32_t*>(shader_vert_main), sizeof(shader_vert_main),
+		VK_SHADER_STAGE_VERTEX_BIT};
+	shaders[static_cast<int>(eVKShaderID::shader_frag_color)] = {reinterpret_cast<const uint32_t*>(shader_frag_color), sizeof(shader_frag_color),
+		VK_SHADER_STAGE_FRAGMENT_BIT};
+	shaders[static_cast<int>(eVKShaderID::shader_frag_texture)] = {reinterpret_cast<const uint32_t*>(shader_frag_texture),
+		sizeof(shader_frag_texture), VK_SHADER_STAGE_FRAGMENT_BIT};
 
 	static_assert(sizeof(m_shaders) / sizeof(m_shaders[0]) >= sizeof(shaders) / sizeof(shaders[0]),
-		"something is wrong, different amount of shaders!"
-	);
+		"something is wrong, different amount of shaders!");
 
 	unsigned char max_size = static_cast<unsigned char>((sizeof(m_shaders) / sizeof(m_shaders[0])));
 	unsigned char iter = 0;
 
 	for (const shader_data_t& shader_data : shaders)
 	{
+		RMLUI_ASSERT(shader_data.m_data_size > 0 && "you forgot to initialize some of shader slot");
+
 		if (iter >= max_size)
 			break;
 
